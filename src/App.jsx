@@ -57,30 +57,32 @@ async function sset(key, val) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const WOCHENTAGE = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
-const WOCHENTAGE_SHORT = ["So","Mo","Di","Mi","Do","Fr","Sa"];
 
 function formatDate(iso) {
   const d = new Date(iso + "T12:00:00");
   return d.toLocaleDateString("de-DE", { weekday: "long", day: "2-digit", month: "long" });
 }
 
-function getCurrentTermin(dates, uhrzeit) {
-  const now = new Date();
-  const todayISO = toISO(now);
-  const [h, m] = uhrzeit.split(":").map(Number);
-  for (const iso of dates) {
-    if (iso < todayISO) continue;
-    if (iso === todayISO) {
-      const kursTime = new Date(); kursTime.setHours(h, m, 0, 0);
-      const cutoff = new Date(kursTime.getTime() - 30 * 60000);
-      if (now < cutoff) return iso; // noch änderbar
-      if (now < kursTime) return iso; // nicht mehr änderbar aber noch heute
-    }
-    return iso;
-  }
-  return dates[dates.length - 1] ?? null;
+function formatDateShort(iso) {
+  const d = new Date(iso + "T12:00:00");
+  return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
 }
 
+// Gibt true zurück wenn der Termin noch sichtbar sein soll
+// Verschwindet 120 Minuten nach Kursbeginn
+function isVisible(iso, uhrzeit) {
+  const now = new Date();
+  const todayISO = toISO(now);
+  if (iso > todayISO) return true;
+  if (iso < todayISO) return false;
+  // heute
+  const [h, m] = uhrzeit.split(":").map(Number);
+  const kursStart = new Date(); kursStart.setHours(h, m, 0, 0);
+  const kursEnde = new Date(kursStart.getTime() + 120 * 60000);
+  return now < kursEnde;
+}
+
+// Abstimmung möglich bis 30 Min vor Kursbeginn
 function isChangeable(iso, uhrzeit) {
   if (!iso) return false;
   const now = new Date();
@@ -115,17 +117,6 @@ const S = {
     width: "auto",
     display: "block",
     objectFit: "contain",
-  },
-  adminBtn: {
-    fontSize: "11px",
-    letterSpacing: "0.1em",
-    textTransform: "uppercase",
-    color: "#b8927a",
-    background: "none",
-    border: "1px solid rgba(180,130,110,0.3)",
-    borderRadius: "20px",
-    padding: "5px 14px",
-    cursor: "pointer",
   },
   page: { maxWidth: 480, margin: "0 auto", padding: "24px 20px 60px" },
   card: {
@@ -172,6 +163,7 @@ const S = {
     borderRadius: "16px",
     padding: "20px",
     border: "1px solid rgba(180,130,110,0.12)",
+    marginTop: "12px",
   },
   statsTitle: {
     fontSize: "11px", letterSpacing: "0.15em", textTransform: "uppercase",
@@ -193,6 +185,21 @@ const S = {
   },
   konfirmText: { fontSize: "15px", color: "#3a6b3a", fontWeight: 600 },
   konfirmSub: { fontSize: "13px", color: "#5a8a5a", marginTop: "4px" },
+
+  // Termin-Tabs
+  tabsRow: {
+    display: "flex", gap: "8px", overflowX: "auto", paddingBottom: "4px",
+    marginBottom: "20px", scrollbarWidth: "none",
+  },
+  tab: (active) => ({
+    padding: "8px 16px", borderRadius: "20px", fontSize: "13px",
+    fontWeight: active ? 700 : 500, whiteSpace: "nowrap",
+    border: active ? "2px solid #c4896e" : "1.5px solid rgba(180,130,110,0.25)",
+    background: active ? "rgba(196,137,110,0.12)" : "rgba(255,255,255,0.6)",
+    color: active ? "#a06848" : "#9c6b55",
+    cursor: "pointer", fontFamily: "inherit",
+    transition: "all 0.15s",
+  }),
 
   // Admin styles
   adminCard: {
@@ -277,7 +284,8 @@ export default function App() {
   const [gruppen, setGruppen] = useState(null);
   const [votes, setVotes] = useState({});
   const [loading, setLoading] = useState(true);
-  const [myVote, setMyVote] = useState(null);
+  const [myVotes, setMyVotes] = useState({}); // { terminISO: option }
+  const [selectedTermin, setSelectedTermin] = useState(null);
   const [copied, setCopied] = useState(null);
   const [saved, setSaved] = useState(false);
 
@@ -288,7 +296,7 @@ export default function App() {
   const [newStart, setNewStart] = useState("");
   const [newEnd, setNewEnd] = useState("");
   const [newBaby, setNewBaby] = useState(false);
-  const [editTermine, setEditTermine] = useState(null); // gruppeId being edited
+  const [editTermine, setEditTermine] = useState(null);
   const [removedDates, setRemovedDates] = useState({});
 
   useEffect(() => {
@@ -299,14 +307,36 @@ export default function App() {
       setGruppen(g || {});
       setVotes(v || {});
       setRemovedDates(rm || {});
-      // Restore my vote from localStorage
+
+      // Restore my votes from localStorage
       if (gruppeId) {
-        const terminKey = `myvote_${gruppeId}`;
-        setMyVote(localStorage.getItem(terminKey) || null);
+        const stored = {};
+        const gruppe = (g || {})[gruppeId];
+        if (gruppe) {
+          for (const date of gruppe.dates) {
+            const val = localStorage.getItem(`myvote_${gruppeId}_${date}`);
+            if (val) stored[date] = val;
+          }
+        }
+        setMyVotes(stored);
       }
       setLoading(false);
     })();
   }, []);
+
+  // Automatisch ersten sichtbaren Termin vorauswählen
+  useEffect(() => {
+    if (!gruppen || !gruppeId) return;
+    const gruppe = gruppen[gruppeId];
+    if (!gruppe) return;
+    const activeRemoved = removedDates[gruppeId] || [];
+    const visible = gruppe.dates.filter(d =>
+      !activeRemoved.includes(d) && isVisible(d, gruppe.uhrzeit)
+    );
+    if (visible.length > 0 && !selectedTermin) {
+      setSelectedTermin(visible[0]);
+    }
+  }, [gruppen, removedDates]);
 
   const saveGruppen = async (g) => { setGruppen(g); await sset("bbb_gruppen_v2", g); };
   const saveVotes = async (v) => { setVotes(v); await sset("bbb_votes_v2", v); };
@@ -332,45 +362,39 @@ export default function App() {
   };
 
   const toggleRemoved = async (gid, date) => {
-    const key = gid;
-    const cur = removedDates[key] || [];
+    const cur = removedDates[gid] || [];
     const updated = cur.includes(date) ? cur.filter(d => d !== date) : [...cur, date];
-    const r = { ...removedDates, [key]: updated };
+    const r = { ...removedDates, [gid]: updated };
     await saveRemoved(r);
   };
 
-  const handleVote = async (option) => {
-    if (!gruppeId || !gruppen?.[gruppeId]) return;
-    const gruppe = gruppen[gruppeId];
-    const activeRemoved = removedDates[gruppeId] || [];
-    const availDates = gruppe.dates.filter(d => !activeRemoved.includes(d));
-    const termin = getCurrentTermin(availDates, gruppe.uhrzeit);
-    if (!termin) return;
+  const handleVote = async (termin, option, gruppe) => {
+    if (!gruppeId) return;
     if (!isChangeable(termin, gruppe.uhrzeit)) return;
 
     const voteKey = `${gruppeId}_${termin}`;
     const curVotes = votes[voteKey] || { kommt: 0, kommt_nicht: 0, online: 0, kinderwagen: 0 };
-    const prev = myVote;
+    const prev = myVotes[termin];
 
-    // Undo previous
     const updated = { ...curVotes };
     if (prev) updated[prev] = Math.max(0, (updated[prev] || 0) - 1);
-    // Add new (toggle off if same)
+
+    const newMyVotes = { ...myVotes };
     if (prev !== option) {
       updated[option] = (updated[option] || 0) + 1;
-      setMyVote(option);
-      localStorage.setItem(`myvote_${gruppeId}`, option);
-      // Weiterleitung bei Absage
+      newMyVotes[termin] = option;
+      localStorage.setItem(`myvote_${gruppeId}_${termin}`, option);
       if (option === "kommt_nicht") {
         setTimeout(() => {
           window.open("https://bauch-baby-beckenboden-absage.netlify.app/", "_blank");
         }, 800);
       }
     } else {
-      setMyVote(null);
-      localStorage.removeItem(`myvote_${gruppeId}`);
+      delete newMyVotes[termin];
+      localStorage.removeItem(`myvote_${gruppeId}_${termin}`);
     }
 
+    setMyVotes(newMyVotes);
     const v = { ...votes, [voteKey]: updated };
     await saveVotes(v);
   };
@@ -398,12 +422,35 @@ export default function App() {
     );
 
     const activeRemoved = removedDates[gruppeId] || [];
-    const availDates = gruppe.dates.filter(d => !activeRemoved.includes(d));
-    const termin = getCurrentTermin(availDates, gruppe.uhrzeit);
+    const visibleDates = gruppe.dates.filter(d =>
+      !activeRemoved.includes(d) && isVisible(d, gruppe.uhrzeit)
+    );
+
+    if (visibleDates.length === 0) return (
+      <div style={S.app}>
+        <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+        <div style={S.header}>
+          <img src="https://bauch-baby-beckenbodencom-a6xk9yzmhk.live-website.com/wp-content/uploads/2026/05/cropped-2026-05-06.jpg" alt="Bauch Baby Beckenboden" style={S.logo} />
+        </div>
+        <div style={S.page}>
+          <div style={S.card}>
+            <p style={{ color: "#9c6b55", fontSize: "16px", textAlign: "center", fontStyle: "italic" }}>
+              Aktuell sind keine weiteren Termine geplant. 🌸
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+
+    const termin = selectedTermin && visibleDates.includes(selectedTermin)
+      ? selectedTermin
+      : visibleDates[0];
+
     const changeable = isChangeable(termin, gruppe.uhrzeit);
     const voteKey = `${gruppeId}_${termin}`;
     const curVotes = votes[voteKey] || { kommt: 0, kommt_nicht: 0, online: 0, kinderwagen: 0 };
     const total = curVotes.kommt + curVotes.online + curVotes.kinderwagen;
+    const myVote = myVotes[termin];
 
     const options = [
       { key: "kommt", emoji: "✅", label: "Ich komme", color: "#5a9e6e" },
@@ -419,16 +466,37 @@ export default function App() {
           <img src="https://bauch-baby-beckenbodencom-a6xk9yzmhk.live-website.com/wp-content/uploads/2026/05/cropped-2026-05-06.jpg" alt="Bauch Baby Beckenboden" style={S.logo} />
         </div>
         <div style={S.page}>
+
+          {/* Termin-Tabs – nur wenn mehr als einer sichtbar */}
+          {visibleDates.length > 1 && (
+            <div style={S.tabsRow}>
+              {visibleDates.map(d => (
+                <button
+                  key={d}
+                  style={S.tab(d === termin)}
+                  onClick={() => setSelectedTermin(d)}
+                >
+                  {formatDateShort(d)}
+                  {myVotes[d] && (
+                    <span style={{ marginLeft: "5px" }}>
+                      {options.find(o => o.key === myVotes[d])?.emoji}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div style={S.card}>
-            <div style={S.terminLabel}>Nächste Kursstunde</div>
-            <div style={S.terminDate}>{termin ? formatDate(termin) : "—"}</div>
+            <div style={S.terminLabel}>Kursstunde</div>
+            <div style={S.terminDate}>{formatDate(termin)}</div>
             <div style={S.terminTime}>🕐 {gruppe.uhrzeit} Uhr · {gruppe.name}</div>
 
-            {!changeable && termin && (
+            {!changeable && (
               <div style={S.cutoffNote}>⏰ Anmeldeschluss erreicht – keine Änderungen mehr möglich.</div>
             )}
             {changeable && myVote && (
-              <div style={{ ...S.cutoffNote, background: "rgba(90,158,110,0.08)", borderColor: "rgba(90,158,110,0.2)" }}>
+              <div style={{ ...S.cutoffNote, background: "rgba(90,158,110,0.08)" }}>
                 ✏️ Du kannst deine Antwort noch bis 30 Min vor Kurs ändern.
               </div>
             )}
@@ -438,7 +506,7 @@ export default function App() {
                 <button
                   key={opt.key}
                   style={S.responseBtn(myVote === opt.key, opt.color)}
-                  onClick={() => changeable && handleVote(opt.key)}
+                  onClick={() => changeable && handleVote(termin, opt.key, gruppe)}
                   disabled={!changeable}
                 >
                   <span style={S.responseBtnEmoji}>{opt.emoji}</span>
@@ -458,7 +526,7 @@ export default function App() {
           </div>
 
           <div style={S.statsCard}>
-            <div style={S.statsTitle}>Aktuelle Anmeldungen</div>
+            <div style={S.statsTitle}>Anmeldungen für diesen Termin</div>
             {[
               { key: "kommt", emoji: "✅", label: "Kommen" },
               { key: "online", emoji: "💻", label: "Online" },
@@ -574,7 +642,6 @@ export default function App() {
                       </div>
                       {g.dates.map(date => {
                         const isRemoved = activeRemoved.includes(date);
-                        const feiertage = hessianHolidays(new Date(date).getFullYear());
                         return (
                           <div key={date} style={S.terminListItem(isRemoved)}>
                             <span style={S.terminDateSmall(isRemoved)}>{formatDate(date)}</span>
