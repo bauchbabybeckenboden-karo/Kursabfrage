@@ -1,21 +1,19 @@
 // netlify/functions/abend-zusammenfassung.mjs
 //
-// Läuft täglich um 20:00 Uhr (Europe/Berlin).
+// Läuft täglich um 18:30 UTC (= 20:30 Uhr Sommerzeit / 19:30 Uhr Winterzeit).
 // Prüft ob morgen ein Kurs stattfindet – wenn ja, sendet eine
 // Zusammenfassung der aktuellen Anmeldungen per Resend.
 //
 // Umgebungsvariablen (in Netlify UI setzen):
 //   RESEND_API_KEY   → dein Resend API-Key (re_xxxx...)
-//   BLOB_TOKEN       → Netlify Blob Store Token (auto-gesetzt von Netlify)
 
-import { schedule } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const AN            = "kontakt@bauch-baby-beckenboden.com";
-const VON           = "Kursapp <kontakt@bauch-baby-beckenboden.com>";
+const AN  = "kontakt@bauch-baby-beckenboden.com";
+const VON = "Kursapp <kontakt@bauch-baby-beckenboden.com>";
 
-// ── Hilfsfunktionen (gleiche Logik wie im Frontend) ───────────────────────
+// ── Hilfsfunktionen ───────────────────────────────────────────────────────
 function getEaster(year) {
   const a = year % 19, b = Math.floor(year / 100), c = year % 100;
   const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
@@ -43,7 +41,7 @@ function formatDateDE(iso) {
   return d.toLocaleDateString("de-DE", { weekday: "long", day: "2-digit", month: "long" });
 }
 
-// ── Daten aus Netlify Blob Store lesen ────────────────────────────────────
+// ── Blob Store lesen ──────────────────────────────────────────────────────
 async function readBlob(key) {
   try {
     const store = getStore("bbb-shared");
@@ -54,10 +52,9 @@ async function readBlob(key) {
   }
 }
 
-// ── Morgen-ISO berechnen (Berlin-Zeit) ───────────────────────────────────
+// ── Morgen-ISO (Berlin-Zeit) ──────────────────────────────────────────────
 function getTomorrowISO() {
   const now = new Date();
-  // UTC+1/+2 je nach Sommer-/Winterzeit – einfache Näherung über de-DE
   const berlinStr = now.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" });
   const [day, month, year] = berlinStr.split(".").map(Number);
   const berlin = new Date(year, month - 1, day);
@@ -67,12 +64,13 @@ function getTomorrowISO() {
 
 // ── E-Mail HTML ───────────────────────────────────────────────────────────
 function buildHtml(kurse) {
-  const rows = kurse.map(({ gruppe, termin, votes }) => {
+  const rows = kurse.map(({ gruppe, termin, votes, notiz }) => {
     const total = (votes.kommt || 0) + (votes.online || 0) + (votes.kinderwagen || 0);
     return `
       <div style="background:#fdf8f5;border-radius:16px;padding:20px 24px;margin-bottom:16px;border:1px solid #e8d5c8;">
         <div style="font-size:18px;font-weight:700;color:#2d1f1a;margin-bottom:4px;">${gruppe.name}</div>
-        <div style="font-size:14px;color:#9c6b55;margin-bottom:16px;">${formatDateDE(termin)} · ${gruppe.uhrzeit} Uhr</div>
+        <div style="font-size:14px;color:#9c6b55;margin-bottom:${notiz ? "8px" : "16px"};">${formatDateDE(termin)} · ${gruppe.uhrzeit} Uhr</div>
+        ${notiz ? `<div style="font-size:13px;color:#7a5040;font-style:italic;background:rgba(196,137,110,0.1);border-radius:8px;padding:6px 12px;margin-bottom:14px;">📌 ${notiz}</div>` : ""}
         <table style="width:100%;border-collapse:collapse;">
           <tr>
             <td style="padding:8px 0;border-bottom:1px solid #ede0d8;font-size:15px;color:#5a3a2e;">✅ Kommen vor Ort</td>
@@ -116,36 +114,31 @@ function buildHtml(kurse) {
 // ── Hauptfunktion ─────────────────────────────────────────────────────────
 const handler = async () => {
   try {
-    const tomorrow = getTomorrowISO();
-    const tomorrowDay = new Date(tomorrow + "T12:00:00").getDay(); // 0=So
+    const tomorrow    = getTomorrowISO();
+    const tomorrowDay = new Date(tomorrow + "T12:00:00").getDay();
 
     const gruppen     = await readBlob("bbb_gruppen_v2") || {};
     const votes       = await readBlob("bbb_votes_v2")   || {};
     const removedData = await readBlob("bbb_removed_v2") || {};
+    const notizenData = await readBlob("bbb_notizen_v2") || {};
 
-    // Alle Kursgruppen finden, die morgen Kurs haben
     const kurse = [];
     for (const [id, gruppe] of Object.entries(gruppen)) {
       if (gruppe.wochentag !== tomorrowDay) continue;
-
-      const removed = removedData[id] || [];
+      const removed   = removedData[id] || [];
       const hatTermin = gruppe.dates.includes(tomorrow) && !removed.includes(tomorrow);
       if (!hatTermin) continue;
-
       const voteKey = `${id}_${tomorrow}`;
       const v = votes[voteKey] || { kommt: 0, kommt_nicht: 0, online: 0, kinderwagen: 0 };
-      kurse.push({ gruppe, termin: tomorrow, votes: v });
+      const notiz = notizenData[`${id}_${tomorrow}`] || null;
+      kurse.push({ gruppe, termin: tomorrow, votes: v, notiz });
     }
 
-    // Kein Kurs morgen → kein E-Mail
     if (kurse.length === 0) {
       console.log("Kein Kurs morgen – kein E-Mail gesendet.");
       return { statusCode: 200, body: "Kein Kurs morgen." };
     }
 
-    const morgenDE = formatDateDE(tomorrow);
-
-    // E-Mail über Resend senden
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -155,7 +148,7 @@ const handler = async () => {
       body: JSON.stringify({
         from: VON,
         to:   [AN],
-        subject: `🌸 Morgen: ${kurse.map(k => k.gruppe.name).join(" & ")} – ${morgenDE}`,
+        subject: `🌸 Morgen: ${kurse.map(k => k.gruppe.name).join(" & ")} – ${formatDateDE(tomorrow)}`,
         html: buildHtml(kurse),
       }),
     });
@@ -175,11 +168,9 @@ const handler = async () => {
   }
 };
 
-// Jeden Abend um 20:00 Uhr Europe/Berlin = 18:00 UTC (Sommerzeit) / 19:00 UTC (Winterzeit)
-// Netlify cron läuft in UTC → 18:00 UTC deckt Sommerzeit ab, für Winterzeit wäre 19:00 nötig.
-// Kompromiss: 18:30 UTC = 19:30 oder 20:30 Uhr je nach Jahreszeit.
+// ── Export (Netlify Functions v2 Format) ──────────────────────────────────
 export const config = {
   schedule: "30 18 * * *",
 };
 
-export default schedule("30 18 * * *", handler);
+export default handler;
