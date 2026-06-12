@@ -136,7 +136,7 @@ const handler = async () => {
 
     if (kurse.length === 0) {
       console.log("Kein Kurs morgen – kein E-Mail gesendet.");
-      return { statusCode: 200, body: "Kein Kurs morgen." };
+      return;
     }
 
     const res = await fetch("https://api.resend.com/emails", {
@@ -156,15 +156,13 @@ const handler = async () => {
     if (!res.ok) {
       const err = await res.text();
       console.error("Resend Fehler:", err);
-      return { statusCode: 500, body: `Resend Fehler: ${err}` };
+      return;
     }
 
     console.log(`E-Mail gesendet für ${kurse.length} Kurs(e) am ${tomorrow}`);
-    return { statusCode: 200, body: "E-Mail gesendet." };
 
   } catch (err) {
     console.error("Fehler:", err);
-    return { statusCode: 500, body: err.message };
   }
 };
 
