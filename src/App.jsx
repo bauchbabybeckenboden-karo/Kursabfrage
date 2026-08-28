@@ -37,6 +37,31 @@ function computeDates(wochentag, startStr, endStr) {
   return termine;
 }
 
+// ─── Hessische Schulferien ───────────────────────────────────────────────────
+// Offiziell bestätigte Termine (Stand: Kultusministerium Hessen, bis Sommer 2030).
+// Für Termine danach liegen noch keine offiziellen Daten vor.
+const HESSEN_FERIEN = [
+  ["2026-10-05", "2026-10-17"], // Herbstferien 2026/27
+  ["2026-12-23", "2027-01-12"], // Weihnachtsferien 2026/27
+  ["2027-03-22", "2027-04-02"], // Osterferien 2026/27
+  ["2027-06-28", "2027-08-06"], // Sommerferien 2026/27
+  ["2027-10-04", "2027-10-16"], // Herbstferien 2027/28
+  ["2027-12-23", "2028-01-11"], // Weihnachtsferien 2027/28
+  ["2028-04-03", "2028-04-14"], // Osterferien 2027/28
+  ["2028-07-03", "2028-08-11"], // Sommerferien 2027/28
+  ["2028-10-09", "2028-10-20"], // Herbstferien 2028/29
+  ["2028-12-27", "2029-01-12"], // Weihnachtsferien 2028/29
+  ["2029-03-29", "2029-04-13"], // Osterferien 2028/29
+  ["2029-07-16", "2029-08-24"], // Sommerferien 2028/29
+  ["2029-10-15", "2029-10-26"], // Herbstferien 2029/30
+  ["2029-12-24", "2030-01-11"], // Weihnachtsferien 2029/30
+  ["2030-04-08", "2030-04-22"], // Osterferien 2029/30
+  ["2030-07-22", "2030-08-30"], // Sommerferien 2029/30
+];
+function isFerientermin(iso) {
+  return HESSEN_FERIEN.some(([start, end]) => iso >= start && iso <= end);
+}
+
 // ─── Storage ─────────────────────────────────────────────────────────────────
 async function sget(key) {
   try {
@@ -112,7 +137,7 @@ const S = {
     padding: "14px 20px",
     display: "flex", alignItems: "center", justifyContent: "space-between",
   },
-  logo: { height: 46, width: "auto", objectFit: "contain", display: "block" },
+  logo: { height: 64, width: "auto", objectFit: "contain", display: "block" },
   page: { maxWidth: 480, margin: "0 auto", padding: "24px 18px 60px" },
   card: {
     background: C.card, borderRadius: 20, padding: "24px 22px",
@@ -308,8 +333,25 @@ export default function App() {
     const dates = computeDates(Number(newWochentag), newStart, newEnd);
     const g = { ...gruppen, [id]: { name: newName, wochentag: Number(newWochentag), uhrzeit: newUhrzeit, start: newStart, end: newEnd, baby: newBaby, dates } };
     await saveGruppen(g);
+    // Termine in den hessischen Schulferien direkt als "entfernt" markieren
+    // (durchgestrichen) – kann jederzeit über ✕/↩ pro Termin wieder freigegeben werden.
+    const ferienDates = dates.filter(isFerientermin);
+    if (ferienDates.length > 0) {
+      await saveRemoved({ ...removedDates, [id]: ferienDates });
+    }
     setNewName(""); setNewStart(""); setNewEnd(""); setNewBaby(false);
     setSaved(true); setTimeout(() => setSaved(false), 2000);
+  };
+
+  // Nachträglich für eine bestehende Gruppe alle noch nicht behandelten
+  // Ferien-Termine ausblenden (z.B. wenn neue Ferientermine bekannt werden).
+  const hideFerien = async (gid) => {
+    const gruppe = gruppen[gid];
+    if (!gruppe) return;
+    const cur = removedDates[gid] || [];
+    const neu = gruppe.dates.filter(d => isFerientermin(d) && !cur.includes(d));
+    if (neu.length === 0) return;
+    await saveRemoved({ ...removedDates, [gid]: [...cur, ...neu] });
   };
 
   const deleteGruppe = async (id) => {
@@ -353,6 +395,17 @@ export default function App() {
       if (option === "kommt_nicht") {
         setTimeout(() => window.open("https://bauch-baby-beckenboden-absage.netlify.app/", "_blank"), 800);
       }
+      if (option === "online") {
+        fetch("/.netlify/functions/notify-online", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            kursname: gruppe.name,
+            termin: formatDate(termin),
+            uhrzeit: gruppe.uhrzeit,
+          }),
+        }).catch(() => {});
+      }
     } else {
       delete newMyVotes[termin];
       localStorage.removeItem(`myvote_${gruppeId}_${termin}`);
@@ -391,7 +444,7 @@ export default function App() {
     if (visibleDates.length === 0) return (
       <div style={S.app}>{fonts}
         <div style={S.header}>
-          <img src="https://bauch-baby-beckenbodencom-a6xk9yzmhk.live-website.com/wp-content/uploads/2026/05/cropped-2026-05-06.jpg" alt="BBB" style={S.logo} />
+          <img src="https://cdn.jsdelivr.net/gh/bauchbabybeckenboden-karo/Logo@main/logo.png" alt="BBB" style={S.logo} />
         </div>
         <div style={S.page}>
           <div style={S.card}>
@@ -421,7 +474,7 @@ export default function App() {
     return (
       <div style={S.app}>{fonts}
         <div style={S.header}>
-          <img src="https://bauch-baby-beckenbodencom-a6xk9yzmhk.live-website.com/wp-content/uploads/2026/05/cropped-2026-05-06.jpg" alt="BBB" style={S.logo} />
+          <img src="https://cdn.jsdelivr.net/gh/bauchbabybeckenboden-karo/Logo@main/logo.png" alt="BBB" style={S.logo} />
           <span style={{ fontSize: 13, color: "#b8927a", fontStyle: "italic" }}>{gruppe.name}</span>
         </div>
         <div style={S.page}>
@@ -429,12 +482,16 @@ export default function App() {
           {/* Termin-Tabs */}
           {visibleDates.length > 1 && (
             <div style={S.tabsRow}>
-              {visibleDates.map(d => (
-                <button key={d} style={S.tab(d === termin)} onClick={() => setSelectedTermin(d)}>
-                  {formatDateShort(d)}
-                  {myVotes[d] && <span style={{ marginLeft: 5 }}>{options.find(o => o.key === myVotes[d])?.emoji}</span>}
-                </button>
-              ))}
+              {visibleDates.map(d => {
+                const hatNotiz = !!notizen[`${gruppeId}_${d}`];
+                return (
+                  <button key={d} style={S.tab(d === termin)} onClick={() => setSelectedTermin(d)}>
+                    {hatNotiz && <span style={{ marginRight: 4 }}>📌</span>}
+                    {formatDateShort(d)}
+                    {myVotes[d] && <span style={{ marginLeft: 5 }}>{options.find(o => o.key === myVotes[d])?.emoji}</span>}
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -474,6 +531,11 @@ export default function App() {
                   {options.find(o => o.key === myVote)?.emoji} Danke für deine Rückmeldung!
                 </div>
                 <div style={{ fontSize: 13, color: "#5a8a5a", marginTop: 3 }}>Die Karo freut sich 🌸</div>
+                {myVote === "online" && (
+                  <div style={{ fontSize: 13, color: "#4a6a9a", marginTop: 8, fontStyle: "italic" }}>
+                    💻 Die Zugangsdaten für die Online-Teilnahme findest du in der Gruppenbeschreibung.
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -508,7 +570,7 @@ export default function App() {
   return (
     <div style={S.app}>{fonts}
       <div style={S.header}>
-        <img src="https://bauch-baby-beckenbodencom-a6xk9yzmhk.live-website.com/wp-content/uploads/2026/05/cropped-2026-05-06.jpg" alt="BBB" style={S.logo} />
+        <img src="https://cdn.jsdelivr.net/gh/bauchbabybeckenboden-karo/Logo@main/logo.png" alt="BBB" style={S.logo} />
         <span style={{ fontSize: 11, color: "#b8927a", letterSpacing: "0.12em" }}>ADMIN</span>
       </div>
       <div style={S.page}>
@@ -586,9 +648,15 @@ export default function App() {
                   {/* Termine + Notizen bearbeiten */}
                   {isEditing && (
                     <div style={{ background: "rgba(180,130,110,0.05)", borderRadius: 11, padding: 14, marginTop: 10 }}>
-                      <div style={{ ...S.sectionLabel, marginBottom: 10 }}>Termine verwalten</div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                        <div style={S.sectionLabel}>Termine verwalten</div>
+                        <button style={{ ...S.secondaryBtn, fontSize: 11 }} onClick={() => hideFerien(id)}>
+                          🏖️ Ferien ausblenden
+                        </button>
+                      </div>
                       {g.dates.map(date => {
                         const isRemoved = activeRemoved.includes(date);
+                        const istFerien = isFerientermin(date);
                         const notizKey = `${id}_${date}`;
                         const hasNotiz = !!notizen[notizKey];
                         const isEditingNotiz = editNotizKey === notizKey;
@@ -598,6 +666,11 @@ export default function App() {
                             <div style={S.terminListItem(isRemoved)}>
                               <span style={{ fontSize: 13, color: isRemoved ? "#c05040" : C.text, textDecoration: isRemoved ? "line-through" : "none", flex: 1 }}>
                                 {formatDate(date)}
+                                {istFerien && (
+                                  <span style={{ fontSize: 10, color: "#5a7ec0", fontStyle: "italic", marginLeft: 6, textDecoration: "none" }}>
+                                    🏖️ Ferien
+                                  </span>
+                                )}
                               </span>
                               <div style={{ display: "flex", gap: 5 }}>
                                 {!isRemoved && (
