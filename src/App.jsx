@@ -131,9 +131,7 @@ const S = {
     color: C.text,
   },
   header: {
-    background: "rgba(255,255,255,0.75)",
-    backdropFilter: "blur(12px)",
-    borderBottom: `1px solid ${C.border}`,
+    background: C.mauve,
     padding: "14px 20px",
     display: "flex", alignItems: "center", justifyContent: "space-between",
   },
@@ -475,7 +473,7 @@ export default function App() {
       <div style={S.app}>{fonts}
         <div style={S.header}>
           <img src="https://cdn.jsdelivr.net/gh/bauchbabybeckenboden-karo/Logo@main/logo.png" alt="BBB" style={S.logo} />
-          <span style={{ fontSize: 13, color: "#b8927a", fontStyle: "italic" }}>{gruppe.name}</span>
+          <span style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", fontStyle: "italic" }}>{gruppe.name}</span>
         </div>
         <div style={S.page}>
 
@@ -571,7 +569,7 @@ export default function App() {
     <div style={S.app}>{fonts}
       <div style={S.header}>
         <img src="https://cdn.jsdelivr.net/gh/bauchbabybeckenboden-karo/Logo@main/logo.png" alt="BBB" style={S.logo} />
-        <span style={{ fontSize: 11, color: "#b8927a", letterSpacing: "0.12em" }}>ADMIN</span>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.85)", letterSpacing: "0.12em" }}>ADMIN</span>
       </div>
       <div style={S.page}>
 
