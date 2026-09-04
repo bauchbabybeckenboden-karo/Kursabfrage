@@ -1,12 +1,10 @@
 // Ziel im Repo: netlify/functions/notify-kursmeldung.mjs (NEUE Datei)
 //
-// ERSETZT notify-online.mjs: die alte Datei bitte aus dem Repo löschen,
-// diese hier deckt jetzt ALLE Rückmeldungen ab (kommt, kommt nicht, online,
-// mit Kinderwagen) – nicht mehr nur "online". Format/Optik ist bewusst
-// identisch zur "Kursmeldung"-Mail aus dem Absage-Tool (netlify/functions/absage.js
-// dort), nur die Meldung selbst ist jetzt nicht mehr auf Absage/Online-Teilnahme
-// begrenzt, sondern zeigt den tatsächlich gewählten Status (z.B. "Online dabei
-// (Zoom)" statt fälschlich "Abgesagt").
+// ERSETZT notify-online.mjs: die alte Datei bitte aus dem Repo löschen.
+// Wird nur noch für "Ich komme" und "Mit Kinderwagen" aufgerufen (App.jsx) –
+// "Komme nicht" und "Online dabei" leiten stattdessen zur Absage-Formular-
+// Seite weiter, die sich selbst um Kursmeldung + Bestätigung kümmert.
+// Kein E-Mail-Feld mehr nötig, nur noch Name.
 //
 // Umgebungsvariablen (in Netlify UI setzen, dieselbe wie bei der Abend-Mail):
 //   RESEND_API_KEY   → dein Resend API-Key (re_xxxx...)
@@ -36,7 +34,7 @@ export default async (req) => {
   }
 
   try {
-    const { name, email, kursart, meldung, termin, uhrzeit } = await req.json();
+    const { name, kursart, meldung, termin, uhrzeit } = await req.json();
 
     const html = `
       <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; color: #2a1a1a;">
@@ -46,12 +44,6 @@ export default async (req) => {
           <tr>
             <td style="padding: 10px 14px; background: #f8f4f0; font-weight: 600; width: 40%;">Name</td>
             <td style="padding: 10px 14px; background: #f8f4f0;">${name || ""}</td>
-          </tr>
-          <tr>
-            <td style="padding: 10px 14px; border-top: 1px solid #e2d8d0; font-weight: 600;">E-Mail</td>
-            <td style="padding: 10px 14px; border-top: 1px solid #e2d8d0;">
-              <a href="mailto:${email || ""}" style="color: #7a3f3a;">${email || ""}</a>
-            </td>
           </tr>
           <tr>
             <td style="padding: 10px 14px; border-top: 1px solid #e2d8d0; font-weight: 600;">Kurs</td>
