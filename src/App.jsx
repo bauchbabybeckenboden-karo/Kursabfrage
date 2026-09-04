@@ -1,4 +1,28 @@
+// Ziel im Repo: src/App.jsx (ERSETZT die bestehende Datei)
+//
+// Änderungen ggü. vorher:
+// 1) Namenspflicht: Teilnehmerinnen müssen ihren Namen eintragen, bevor sie
+//    sich für einen Termin zurückmelden können (gilt automatisch auch für
+//    alle bereits angelegten Kursgruppen, weil die Prüfung im gemeinsamen
+//    Formular-Code steckt statt pro Gruppe gespeichert zu werden).
+// 2) "Online dabei": öffnet jetzt automatisch den Online-Link der Gruppe,
+//    falls in Admin hinterlegt.
+// 3) Anmeldungen werden jetzt als Namensliste gespeichert statt nur als
+//    Zahl – alte Zähler-Daten bleiben als "anonym" erhalten.
+// 4) Teilnehmerinnen bekommen jetzt zusätzlich selbst eine Bestätigung per
+//    EmailJS (dieselbe Vorlage/Service wie im Absage-Tool). Dafür ist jetzt
+//    zusätzlich zum Namen auch die E-Mail-Adresse Pflicht.
+// 5) Karo bekommt jetzt bei JEDER Rückmeldung (nicht mehr nur "online") eine
+//    Kursmeldung per Mail – über netlify/functions/notify-kursmeldung.mjs
+//    (ersetzt notify-online.mjs, das bitte aus dem Repo löschen).
 import { useState, useEffect } from "react";
+import emailjs from "@emailjs/browser";
+
+// EmailJS – Bestätigungsmail an die Teilnehmerin (dieselbe Konfiguration
+// wie im bestehenden Absage-Tool, damit dieselbe Vorlage genutzt wird).
+const EMAILJS_SERVICE_ID  = "service_07r1rpa";
+const EMAILJS_TEMPLATE_ID = "template_dksox2j";
+const EMAILJS_PUBLIC_KEY  = "6DXWttFI3lioO8ZHC";
 
 // ─── Hessische Feiertage ─────────────────────────────────────────────────────
 function getEaster(year) {
@@ -80,6 +104,38 @@ async function sset(key, val) {
   } catch {}
 }
 
+// ─── Anmeldungen (Namensliste statt reiner Zähler) ───────────────────────────
+// Format pro Termin: { kommt: [...], kommt_nicht: [...], online: [...], kinderwagen: [...] }
+// Jeder Eintrag: { id, name, ts }. Altes Zähler-Format (nur Zahlen) wird beim
+// Lesen automatisch in anonyme Platzhalter-Einträge umgewandelt, damit keine
+// bisherigen Zählungen verloren gehen – gilt also auch für alle bereits
+// angelegten Kursgruppen, ohne dass an den gespeicherten Daten etwas
+// manuell migriert werden muss.
+function normalizeVotes(v) {
+  const base = { kommt: [], kommt_nicht: [], online: [], kinderwagen: [] };
+  if (!v) return base;
+  for (const k of Object.keys(base)) {
+    const val = v[k];
+    if (Array.isArray(val)) {
+      base[k] = val;
+    } else if (typeof val === "number" && val > 0) {
+      base[k] = Array.from({ length: val }, (_, i) => ({ id: `legacy-${k}-${i}`, name: null, ts: null }));
+    }
+  }
+  return base;
+}
+function namesOf(entries) {
+  return (entries || []).map(e => e.name).filter(Boolean);
+}
+function getTeilnehmerId() {
+  let id = localStorage.getItem("bbb_teilnehmer_id");
+  if (!id) {
+    id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    localStorage.setItem("bbb_teilnehmer_id", id);
+  }
+  return id;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const WOCHENTAGE = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
 
@@ -90,6 +146,14 @@ function formatDate(iso) {
 function formatDateShort(iso) {
   const d = new Date(iso + "T12:00:00");
   return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+}
+function optionLabel(opt) {
+  return {
+    kommt: "Vor Ort dabei",
+    kommt_nicht: "Kann leider nicht teilnehmen",
+    online: "Online dabei (Zoom)",
+    kinderwagen: "Vor Ort mit Kinderwagen",
+  }[opt] || opt;
 }
 
 // Termin verschwindet 120 Minuten nach Kursbeginn
@@ -199,6 +263,10 @@ const S = {
     padding: "7px 0", borderBottom: `1px solid rgba(180,130,110,0.08)`,
   },
   statLeft: { display: "flex", alignItems: "center", gap: 10 },
+  namesLine: {
+    fontSize: 12, color: "#9c6b55", fontStyle: "italic",
+    padding: "0 0 7px", borderBottom: `1px solid rgba(180,130,110,0.08)`,
+  },
 
   // Admin
   label: { fontSize: 13, color: "#7a5a4e", marginBottom: 5, display: "block" },
@@ -273,6 +341,12 @@ export default function App() {
   const [copied, setCopied] = useState(null);
   const [saved, setSaved] = useState(false);
 
+  // Teilnehmerin: Name + E-Mail (Pflichtfelder für Anmeldungen, im Browser gemerkt)
+  const [teilnehmerName, setTeilnehmerName] = useState(() => localStorage.getItem("bbb_name") || "");
+  const updateName = (val) => { setTeilnehmerName(val); localStorage.setItem("bbb_name", val); };
+  const [teilnehmerEmail, setTeilnehmerEmail] = useState(() => localStorage.getItem("bbb_email") || "");
+  const updateEmail = (val) => { setTeilnehmerEmail(val); localStorage.setItem("bbb_email", val); };
+
   // Admin form
   const [newName, setNewName] = useState("");
   const [newWochentag, setNewWochentag] = useState(1);
@@ -280,9 +354,12 @@ export default function App() {
   const [newStart, setNewStart] = useState("");
   const [newEnd, setNewEnd] = useState("");
   const [newBaby, setNewBaby] = useState(false);
+  const [newOnlineLink, setNewOnlineLink] = useState("");
   const [editTermine, setEditTermine] = useState(null);
   const [editNotizKey, setEditNotizKey] = useState(null);
   const [notizDraft, setNotizDraft] = useState("");
+  const [editLinkId, setEditLinkId] = useState(null);
+  const [linkDraft, setLinkDraft] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -329,7 +406,15 @@ export default function App() {
     if (!newName || !newStart || !newEnd) return;
     const id = newName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") + "-" + Date.now();
     const dates = computeDates(Number(newWochentag), newStart, newEnd);
-    const g = { ...gruppen, [id]: { name: newName, wochentag: Number(newWochentag), uhrzeit: newUhrzeit, start: newStart, end: newEnd, baby: newBaby, dates } };
+    const g = {
+      ...gruppen,
+      [id]: {
+        name: newName, wochentag: Number(newWochentag), uhrzeit: newUhrzeit,
+        start: newStart, end: newEnd, baby: newBaby,
+        onlineLink: newOnlineLink.trim() || null,
+        dates,
+      },
+    };
     await saveGruppen(g);
     // Termine in den hessischen Schulferien direkt als "entfernt" markieren
     // (durchgestrichen) – kann jederzeit über ✕/↩ pro Termin wieder freigegeben werden.
@@ -337,7 +422,7 @@ export default function App() {
     if (ferienDates.length > 0) {
       await saveRemoved({ ...removedDates, [id]: ferienDates });
     }
-    setNewName(""); setNewStart(""); setNewEnd(""); setNewBaby(false);
+    setNewName(""); setNewStart(""); setNewEnd(""); setNewBaby(false); setNewOnlineLink("");
     setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
 
@@ -378,32 +463,65 @@ export default function App() {
     await saveNotizen(n);
   };
 
+  // Online-Link einer bestehenden Gruppe setzen/ändern (auch für alte Gruppen nutzbar)
+  const saveOnlineLink = async (gid) => {
+    const g = { ...gruppen, [gid]: { ...gruppen[gid], onlineLink: linkDraft.trim() || null } };
+    await saveGruppen(g);
+    setEditLinkId(null);
+    setLinkDraft("");
+  };
+
   const handleVote = async (termin, option, gruppe) => {
     if (!gruppeId || !isChangeable(termin, gruppe.uhrzeit)) return;
+    if (!teilnehmerName.trim() || !teilnehmerEmail.trim()) return; // Name + E-Mail Pflicht: ohne beides keine Anmeldung
+
+    const teilnehmerId = getTeilnehmerId();
     const voteKey = `${gruppeId}_${termin}`;
-    const curVotes = votes[voteKey] || { kommt: 0, kommt_nicht: 0, online: 0, kinderwagen: 0 };
+    const curVotes = normalizeVotes(votes[voteKey]);
     const prev = myVotes[termin];
     const updated = { ...curVotes };
-    if (prev) updated[prev] = Math.max(0, (updated[prev] || 0) - 1);
+
+    // eigene bisherige Stimme entfernen (egal in welcher Option sie stand)
+    if (prev && updated[prev]) {
+      updated[prev] = updated[prev].filter(e => e.id !== teilnehmerId);
+    }
+
     const newMyVotes = { ...myVotes };
     if (prev !== option) {
-      updated[option] = (updated[option] || 0) + 1;
+      updated[option] = [...(updated[option] || []), { id: teilnehmerId, name: teilnehmerName.trim(), ts: Date.now() }];
       newMyVotes[termin] = option;
       localStorage.setItem(`myvote_${gruppeId}_${termin}`, option);
+
       if (option === "kommt_nicht") {
         setTimeout(() => window.open("https://bauch-baby-beckenboden-absage.netlify.app/", "_blank"), 800);
       }
-      if (option === "online") {
-        fetch("/.netlify/functions/notify-online", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            kursname: gruppe.name,
-            termin: formatDate(termin),
-            uhrzeit: gruppe.uhrzeit,
-          }),
-        }).catch(() => {});
+      if (option === "online" && gruppe.onlineLink) {
+        setTimeout(() => window.open(gruppe.onlineLink, "_blank"), 800);
       }
+
+      // Kursmeldung an Karo – jetzt für JEDE Rückmeldung (kommt, kommt nicht,
+      // online, mit Kinderwagen), nicht mehr nur für "online". Gleiches Format
+      // wie die Kursmeldung im Absage-Tool, Meldungstext kommt aus optionLabel().
+      fetch("/.netlify/functions/notify-kursmeldung", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: teilnehmerName.trim(),
+          email: teilnehmerEmail.trim(),
+          kursart: gruppe.name,
+          meldung: optionLabel(option),
+          termin: formatDate(termin),
+          uhrzeit: gruppe.uhrzeit,
+        }),
+      }).catch((e) => console.warn("notify-kursmeldung fehlgeschlagen:", e));
+
+      // Bestätigungsmail an die Teilnehmerin selbst (EmailJS, gleiche Vorlage wie im Absage-Tool)
+      emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+        Vorname: teilnehmerName.trim().split(/\s+/)[0],
+        kursart: gruppe.name,
+        termine_text: `Du hast folgende Rückmeldung gegeben:\n• ${formatDate(termin)} (${gruppe.uhrzeit} Uhr) → ${optionLabel(option)}`,
+        reply_to: teilnehmerEmail.trim(),
+      }, EMAILJS_PUBLIC_KEY).catch((e) => console.warn("EmailJS-Bestätigung fehlgeschlagen:", e));
     } else {
       delete newMyVotes[termin];
       localStorage.removeItem(`myvote_${gruppeId}_${termin}`);
@@ -457,10 +575,13 @@ export default function App() {
     const termin = selectedTermin && visibleDates.includes(selectedTermin) ? selectedTermin : visibleDates[0];
     const changeable = isChangeable(termin, gruppe.uhrzeit);
     const voteKey = `${gruppeId}_${termin}`;
-    const curVotes = votes[voteKey] || { kommt: 0, kommt_nicht: 0, online: 0, kinderwagen: 0 };
-    const total = (curVotes.kommt || 0) + (curVotes.online || 0) + (curVotes.kinderwagen || 0);
+    const curVotes = normalizeVotes(votes[voteKey]);
+    const total = curVotes.kommt.length + curVotes.online.length + curVotes.kinderwagen.length;
     const myVote = myVotes[termin];
     const notiz = notizen[`${gruppeId}_${termin}`];
+    const nameFehlt = !teilnehmerName.trim();
+    const emailFehlt = !teilnehmerEmail.trim();
+    const angabenFehlen = nameFehlt || emailFehlt;
 
     const options = [
       { key: "kommt",       emoji: "✅", label: "Ich komme",       color: "#5a9e6e" },
@@ -510,12 +631,47 @@ export default function App() {
               </div>
             )}
 
+            {/* Name + E-Mail – Pflicht vor jeder Anmeldung (E-Mail für deine Bestätigungsmail) */}
+            {changeable && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={S.label}>DEIN NAME</label>
+                  <input
+                    style={S.input}
+                    placeholder="Vor- und Nachname"
+                    value={teilnehmerName}
+                    onChange={e => updateName(e.target.value)}
+                  />
+                  {nameFehlt && (
+                    <div style={{ fontSize: 12, color: "#c05040", marginTop: 5, fontStyle: "italic" }}>
+                      Bitte trage deinen Namen ein, um dich anzumelden.
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label style={S.label}>DEINE E-MAIL (für deine Bestätigung)</label>
+                  <input
+                    style={S.input}
+                    type="email"
+                    placeholder="deine@email.de"
+                    value={teilnehmerEmail}
+                    onChange={e => updateEmail(e.target.value)}
+                  />
+                  {emailFehlt && (
+                    <div style={{ fontSize: 12, color: "#c05040", marginTop: 5, fontStyle: "italic" }}>
+                      Bitte trage deine E-Mail-Adresse ein.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div style={S.responseGrid}>
               {options.map(opt => (
                 <button key={opt.key}
                   style={S.responseBtn(myVote === opt.key, opt.color)}
-                  onClick={() => changeable && handleVote(termin, opt.key, gruppe)}
-                  disabled={!changeable}
+                  onClick={() => changeable && !angabenFehlen && handleVote(termin, opt.key, gruppe)}
+                  disabled={!changeable || angabenFehlen}
                 >
                   <span style={S.responseBtnEmoji}>{opt.emoji}</span>
                   <span style={S.responseBtnLabel(myVote === opt.key, opt.color)}>{opt.label}</span>
@@ -526,12 +682,14 @@ export default function App() {
             {myVote && (
               <div style={S.konfirmBox}>
                 <div style={{ fontSize: 15, fontWeight: 600, color: "#3a6b3a" }}>
-                  {options.find(o => o.key === myVote)?.emoji} Danke für deine Rückmeldung!
+                  {options.find(o => o.key === myVote)?.emoji} Danke für deine Rückmeldung, {teilnehmerName.trim()}!
                 </div>
                 <div style={{ fontSize: 13, color: "#5a8a5a", marginTop: 3 }}>Die Karo freut sich 🌸</div>
                 {myVote === "online" && (
                   <div style={{ fontSize: 13, color: "#4a6a9a", marginTop: 8, fontStyle: "italic" }}>
-                    💻 Die Zugangsdaten für die Online-Teilnahme findest du in der Gruppenbeschreibung.
+                    {gruppe.onlineLink
+                      ? "💻 Der Online-Link öffnet sich gleich automatisch in einem neuen Tab."
+                      : "💻 Deinen Zoom-Zugang findest du in der WhatsApp-Gruppenbeschreibung – die Bestätigung kommt gleich auch per E-Mail."}
                   </div>
                 )}
               </div>
@@ -545,15 +703,26 @@ export default function App() {
               { key: "online",      emoji: "💻", label: "Online" },
               ...(gruppe.baby ? [{ key: "kinderwagen", emoji: "🛒", label: "Mit Kinderwagen" }] : []),
               { key: "kommt_nicht", emoji: "😖", label: "Kommen nicht" },
-            ].map((s, i, arr) => (
-              <div key={s.key} style={{ ...S.statRow, borderBottom: i === arr.length - 1 ? "none" : undefined }}>
-                <div style={S.statLeft}>
-                  <span style={{ fontSize: 18 }}>{s.emoji}</span>
-                  <span style={{ fontSize: 15, color: "#5a3a2e" }}>{s.label}</span>
+            ].map((s, i, arr) => {
+              const names = namesOf(curVotes[s.key]);
+              const isLast = i === arr.length - 1;
+              return (
+                <div key={s.key}>
+                  <div style={{ ...S.statRow, borderBottom: (isLast && names.length === 0) ? "none" : undefined }}>
+                    <div style={S.statLeft}>
+                      <span style={{ fontSize: 18 }}>{s.emoji}</span>
+                      <span style={{ fontSize: 15, color: "#5a3a2e" }}>{s.label}</span>
+                    </div>
+                    <span style={{ fontSize: 22, fontWeight: 700, color: "#9c6b55" }}>{curVotes[s.key].length}</span>
+                  </div>
+                  {names.length > 0 && (
+                    <div style={{ ...S.namesLine, borderBottom: isLast ? "none" : S.namesLine.borderBottom }}>
+                      {names.join(", ")}
+                    </div>
+                  )}
                 </div>
-                <span style={{ fontSize: 22, fontWeight: 700, color: "#9c6b55" }}>{curVotes[s.key] || 0}</span>
-              </div>
-            ))}
+              );
+            })}
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid rgba(180,130,110,0.15)`, display: "flex", justifyContent: "space-between" }}>
               <span style={{ fontSize: 13, color: "#9c6b55" }}>Gesamt vor Ort</span>
               <span style={{ fontSize: 20, fontWeight: 700, color: C.warm }}>{total}</span>
@@ -602,6 +771,10 @@ export default function App() {
               <input style={S.input} type="date" value={newEnd} onChange={e => setNewEnd(e.target.value)} />
             </div>
           </div>
+          <div style={{ marginBottom: 11 }}>
+            <label style={S.label}>Online-Link (optional, z.B. Zoom) – öffnet sich automatisch bei „Online dabei"</label>
+            <input style={S.input} value={newOnlineLink} onChange={e => setNewOnlineLink(e.target.value)} placeholder="https://zoom.us/j/..." />
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 4 }}>
             <input type="checkbox" id="baby" checked={newBaby} onChange={e => setNewBaby(e.target.checked)} style={{ width: 17, height: 17, accentColor: C.warm }} />
             <label htmlFor="baby" style={{ fontSize: 14, color: C.text, cursor: "pointer" }}>🛒 Baby-Kurs (Kinderwagen-Option anzeigen)</label>
@@ -618,22 +791,40 @@ export default function App() {
             {Object.entries(gruppen).map(([id, g]) => {
               const activeRemoved = removedDates[id] || [];
               const isEditing = editTermine === id;
+              const isEditingLink = editLinkId === id;
               return (
                 <div key={id} style={{ marginBottom: 14 }}>
                   <div style={S.gruppeCard(isEditing)}>
                     <div>
                       <div style={{ fontSize: 16, fontWeight: 600 }}>{g.name}</div>
                       <div style={{ fontSize: 12, color: "#9c6b55", marginTop: 2 }}>
-                        {WOCHENTAGE[g.wochentag]} · {g.uhrzeit} Uhr · {g.dates.length - activeRemoved.length} Termine{g.baby ? " · 🛒" : ""}
+                        {WOCHENTAGE[g.wochentag]} · {g.uhrzeit} Uhr · {g.dates.length - activeRemoved.length} Termine{g.baby ? " · 🛒" : ""}{g.onlineLink ? " · 🔗" : ""}
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 7 }}>
+                      <button style={S.secondaryBtn} onClick={() => { setEditLinkId(isEditingLink ? null : id); setLinkDraft(g.onlineLink || ""); }}>
+                        {g.onlineLink ? "🔗 Link" : "＋ Link"}
+                      </button>
                       <button style={S.secondaryBtn} onClick={() => setEditTermine(isEditing ? null : id)}>
                         {isEditing ? "Schließen" : "Termine"}
                       </button>
                       <button style={S.dangerBtn} onClick={() => deleteGruppe(id)}>Löschen</button>
                     </div>
                   </div>
+
+                  {/* Online-Link bearbeiten */}
+                  {isEditingLink && (
+                    <div style={{ background: "rgba(180,130,110,0.05)", borderRadius: 11, padding: 14, marginTop: 4, marginBottom: 6 }}>
+                      <label style={S.label}>Online-Link (Zoom o.ä.) – öffnet sich automatisch für Teilnehmerinnen mit „Online dabei"</label>
+                      <input style={{ ...S.input, marginBottom: 8 }} value={linkDraft} onChange={e => setLinkDraft(e.target.value)} placeholder="https://zoom.us/j/..." autoFocus />
+                      <div style={{ display: "flex", gap: 7 }}>
+                        <button style={{ ...S.primaryBtn, width: "auto", flex: 1, padding: "7px 0", fontSize: 13, marginTop: 0 }} onClick={() => saveOnlineLink(id)}>
+                          Speichern
+                        </button>
+                        <button style={S.secondaryBtn} onClick={() => { setEditLinkId(null); setLinkDraft(""); }}>Abbrechen</button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Teilnehmer-Link */}
                   <div style={S.linkBox}>
