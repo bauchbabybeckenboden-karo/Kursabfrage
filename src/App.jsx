@@ -1,28 +1,21 @@
 // Ziel im Repo: src/App.jsx (ERSETZT die bestehende Datei)
 //
-// Änderungen ggü. vorher:
-// 1) Namenspflicht: Teilnehmerinnen müssen ihren Namen eintragen, bevor sie
-//    sich für einen Termin zurückmelden können (gilt automatisch auch für
-//    alle bereits angelegten Kursgruppen, weil die Prüfung im gemeinsamen
-//    Formular-Code steckt statt pro Gruppe gespeichert zu werden).
-// 2) "Online dabei": öffnet jetzt automatisch den Online-Link der Gruppe,
-//    falls in Admin hinterlegt.
-// 3) Anmeldungen werden jetzt als Namensliste gespeichert statt nur als
-//    Zahl – alte Zähler-Daten bleiben als "anonym" erhalten.
-// 4) Teilnehmerinnen bekommen jetzt zusätzlich selbst eine Bestätigung per
-//    EmailJS (dieselbe Vorlage/Service wie im Absage-Tool). Dafür ist jetzt
-//    zusätzlich zum Namen auch die E-Mail-Adresse Pflicht.
-// 5) Karo bekommt jetzt bei JEDER Rückmeldung (nicht mehr nur "online") eine
-//    Kursmeldung per Mail – über netlify/functions/notify-kursmeldung.mjs
-//    (ersetzt notify-online.mjs, das bitte aus dem Repo löschen).
+// Stand:
+// 1) Namenspflicht (nur Name, keine E-Mail): Teilnehmerinnen müssen ihren
+//    Namen eintragen, bevor sie sich für einen Termin zurückmelden können
+//    (gilt automatisch auch für alle bereits angelegten Kursgruppen, weil
+//    die Prüfung im gemeinsamen Formular-Code steckt statt pro Gruppe
+//    gespeichert zu werden).
+// 2) Anmeldungen werden als Namensliste gespeichert statt nur als Zahl –
+//    alte Zähler-Daten bleiben als "anonym" erhalten.
+// 3) "Komme nicht" UND "Online dabei" leiten (wie früher bei "Komme nicht")
+//    nach kurzer Bestätigung zur bestehenden Absage-Formular-Seite weiter
+//    (dort geben Teilnehmerinnen E-Mail + Details ein, diese Seite kümmert
+//    sich selbst um EmailJS-Bestätigung an sie und Kursmeldung an Karo).
+// 4) "Ich komme" UND "Mit Kinderwagen" bleiben komplett in dieser App –
+//    dafür bekommt Karo direkt eine Kursmeldung per Mail über
+//    netlify/functions/notify-kursmeldung.mjs.
 import { useState, useEffect } from "react";
-import emailjs from "@emailjs/browser";
-
-// EmailJS – Bestätigungsmail an die Teilnehmerin (dieselbe Konfiguration
-// wie im bestehenden Absage-Tool, damit dieselbe Vorlage genutzt wird).
-const EMAILJS_SERVICE_ID  = "service_07r1rpa";
-const EMAILJS_TEMPLATE_ID = "template_dksox2j";
-const EMAILJS_PUBLIC_KEY  = "6DXWttFI3lioO8ZHC";
 
 // ─── Hessische Feiertage ─────────────────────────────────────────────────────
 function getEaster(year) {
@@ -341,11 +334,9 @@ export default function App() {
   const [copied, setCopied] = useState(null);
   const [saved, setSaved] = useState(false);
 
-  // Teilnehmerin: Name + E-Mail (Pflichtfelder für Anmeldungen, im Browser gemerkt)
+  // Teilnehmerin: Name (einziges Pflichtfeld für Anmeldungen, im Browser gemerkt)
   const [teilnehmerName, setTeilnehmerName] = useState(() => localStorage.getItem("bbb_name") || "");
   const updateName = (val) => { setTeilnehmerName(val); localStorage.setItem("bbb_name", val); };
-  const [teilnehmerEmail, setTeilnehmerEmail] = useState(() => localStorage.getItem("bbb_email") || "");
-  const updateEmail = (val) => { setTeilnehmerEmail(val); localStorage.setItem("bbb_email", val); };
 
   // Admin form
   const [newName, setNewName] = useState("");
@@ -354,12 +345,9 @@ export default function App() {
   const [newStart, setNewStart] = useState("");
   const [newEnd, setNewEnd] = useState("");
   const [newBaby, setNewBaby] = useState(false);
-  const [newOnlineLink, setNewOnlineLink] = useState("");
   const [editTermine, setEditTermine] = useState(null);
   const [editNotizKey, setEditNotizKey] = useState(null);
   const [notizDraft, setNotizDraft] = useState("");
-  const [editLinkId, setEditLinkId] = useState(null);
-  const [linkDraft, setLinkDraft] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -411,7 +399,6 @@ export default function App() {
       [id]: {
         name: newName, wochentag: Number(newWochentag), uhrzeit: newUhrzeit,
         start: newStart, end: newEnd, baby: newBaby,
-        onlineLink: newOnlineLink.trim() || null,
         dates,
       },
     };
@@ -422,7 +409,7 @@ export default function App() {
     if (ferienDates.length > 0) {
       await saveRemoved({ ...removedDates, [id]: ferienDates });
     }
-    setNewName(""); setNewStart(""); setNewEnd(""); setNewBaby(false); setNewOnlineLink("");
+    setNewName(""); setNewStart(""); setNewEnd(""); setNewBaby(false);
     setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
 
@@ -434,7 +421,7 @@ export default function App() {
     const cur = removedDates[gid] || [];
     const neu = gruppe.dates.filter(d => isFerientermin(d) && !cur.includes(d));
     if (neu.length === 0) return;
-    await saveRemoved({ ...removedDates, [gid]: [...cur, ...neu] });
+    await saveRemoved({ ...removedDates, [gid]: neu });
   };
 
   const deleteGruppe = async (id) => {
@@ -463,17 +450,9 @@ export default function App() {
     await saveNotizen(n);
   };
 
-  // Online-Link einer bestehenden Gruppe setzen/ändern (auch für alte Gruppen nutzbar)
-  const saveOnlineLink = async (gid) => {
-    const g = { ...gruppen, [gid]: { ...gruppen[gid], onlineLink: linkDraft.trim() || null } };
-    await saveGruppen(g);
-    setEditLinkId(null);
-    setLinkDraft("");
-  };
-
   const handleVote = async (termin, option, gruppe) => {
     if (!gruppeId || !isChangeable(termin, gruppe.uhrzeit)) return;
-    if (!teilnehmerName.trim() || !teilnehmerEmail.trim()) return; // Name + E-Mail Pflicht: ohne beides keine Anmeldung
+    if (!teilnehmerName.trim()) return; // Namenspflicht: ohne Namen keine Anmeldung
 
     const teilnehmerId = getTeilnehmerId();
     const voteKey = `${gruppeId}_${termin}`;
@@ -492,36 +471,26 @@ export default function App() {
       newMyVotes[termin] = option;
       localStorage.setItem(`myvote_${gruppeId}_${termin}`, option);
 
-      if (option === "kommt_nicht") {
+      if (option === "kommt_nicht" || option === "online") {
+        // Wie früher: Weiterleitung zur Absage-Formular-Seite (dort werden
+        // E-Mail + Details erfasst, die Seite kümmert sich selbst um
+        // Bestätigung an die Teilnehmerin und Kursmeldung an Karo).
         setTimeout(() => window.open("https://bauch-baby-beckenboden-absage.netlify.app/", "_blank"), 800);
+      } else {
+        // "kommt" / "kinderwagen": bleibt komplett hier – Karo bekommt
+        // direkt eine Kursmeldung.
+        fetch("/.netlify/functions/notify-kursmeldung", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: teilnehmerName.trim(),
+            kursart: gruppe.name,
+            meldung: optionLabel(option),
+            termin: formatDate(termin),
+            uhrzeit: gruppe.uhrzeit,
+          }),
+        }).catch((e) => console.warn("notify-kursmeldung fehlgeschlagen:", e));
       }
-      if (option === "online" && gruppe.onlineLink) {
-        setTimeout(() => window.open(gruppe.onlineLink, "_blank"), 800);
-      }
-
-      // Kursmeldung an Karo – jetzt für JEDE Rückmeldung (kommt, kommt nicht,
-      // online, mit Kinderwagen), nicht mehr nur für "online". Gleiches Format
-      // wie die Kursmeldung im Absage-Tool, Meldungstext kommt aus optionLabel().
-      fetch("/.netlify/functions/notify-kursmeldung", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: teilnehmerName.trim(),
-          email: teilnehmerEmail.trim(),
-          kursart: gruppe.name,
-          meldung: optionLabel(option),
-          termin: formatDate(termin),
-          uhrzeit: gruppe.uhrzeit,
-        }),
-      }).catch((e) => console.warn("notify-kursmeldung fehlgeschlagen:", e));
-
-      // Bestätigungsmail an die Teilnehmerin selbst (EmailJS, gleiche Vorlage wie im Absage-Tool)
-      emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-        Vorname: teilnehmerName.trim().split(/\s+/)[0],
-        kursart: gruppe.name,
-        termine_text: `Du hast folgende Rückmeldung gegeben:\n• ${formatDate(termin)} (${gruppe.uhrzeit} Uhr) → ${optionLabel(option)}`,
-        reply_to: teilnehmerEmail.trim(),
-      }, EMAILJS_PUBLIC_KEY).catch((e) => console.warn("EmailJS-Bestätigung fehlgeschlagen:", e));
     } else {
       delete newMyVotes[termin];
       localStorage.removeItem(`myvote_${gruppeId}_${termin}`);
@@ -580,8 +549,6 @@ export default function App() {
     const myVote = myVotes[termin];
     const notiz = notizen[`${gruppeId}_${termin}`];
     const nameFehlt = !teilnehmerName.trim();
-    const emailFehlt = !teilnehmerEmail.trim();
-    const angabenFehlen = nameFehlt || emailFehlt;
 
     const options = [
       { key: "kommt",       emoji: "✅", label: "Ich komme",       color: "#5a9e6e" },
@@ -631,38 +598,21 @@ export default function App() {
               </div>
             )}
 
-            {/* Name + E-Mail – Pflicht vor jeder Anmeldung (E-Mail für deine Bestätigungsmail) */}
+            {/* Namensfeld – einziges Pflichtfeld vor jeder Anmeldung */}
             {changeable && (
               <div style={{ marginBottom: 16 }}>
-                <div style={{ marginBottom: 12 }}>
-                  <label style={S.label}>DEIN NAME</label>
-                  <input
-                    style={S.input}
-                    placeholder="Vor- und Nachname"
-                    value={teilnehmerName}
-                    onChange={e => updateName(e.target.value)}
-                  />
-                  {nameFehlt && (
-                    <div style={{ fontSize: 12, color: "#c05040", marginTop: 5, fontStyle: "italic" }}>
-                      Bitte trage deinen Namen ein, um dich anzumelden.
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label style={S.label}>DEINE E-MAIL (für deine Bestätigung)</label>
-                  <input
-                    style={S.input}
-                    type="email"
-                    placeholder="deine@email.de"
-                    value={teilnehmerEmail}
-                    onChange={e => updateEmail(e.target.value)}
-                  />
-                  {emailFehlt && (
-                    <div style={{ fontSize: 12, color: "#c05040", marginTop: 5, fontStyle: "italic" }}>
-                      Bitte trage deine E-Mail-Adresse ein.
-                    </div>
-                  )}
-                </div>
+                <label style={S.label}>DEIN NAME</label>
+                <input
+                  style={S.input}
+                  placeholder="Vor- und Nachname"
+                  value={teilnehmerName}
+                  onChange={e => updateName(e.target.value)}
+                />
+                {nameFehlt && (
+                  <div style={{ fontSize: 12, color: "#c05040", marginTop: 5, fontStyle: "italic" }}>
+                    Bitte trage deinen Namen ein, um dich anzumelden.
+                  </div>
+                )}
               </div>
             )}
 
@@ -670,8 +620,8 @@ export default function App() {
               {options.map(opt => (
                 <button key={opt.key}
                   style={S.responseBtn(myVote === opt.key, opt.color)}
-                  onClick={() => changeable && !angabenFehlen && handleVote(termin, opt.key, gruppe)}
-                  disabled={!changeable || angabenFehlen}
+                  onClick={() => changeable && !nameFehlt && handleVote(termin, opt.key, gruppe)}
+                  disabled={!changeable || nameFehlt}
                 >
                   <span style={S.responseBtnEmoji}>{opt.emoji}</span>
                   <span style={S.responseBtnLabel(myVote === opt.key, opt.color)}>{opt.label}</span>
@@ -685,11 +635,9 @@ export default function App() {
                   {options.find(o => o.key === myVote)?.emoji} Danke für deine Rückmeldung, {teilnehmerName.trim()}!
                 </div>
                 <div style={{ fontSize: 13, color: "#5a8a5a", marginTop: 3 }}>Die Karo freut sich 🌸</div>
-                {myVote === "online" && (
+                {(myVote === "kommt_nicht" || myVote === "online") && (
                   <div style={{ fontSize: 13, color: "#4a6a9a", marginTop: 8, fontStyle: "italic" }}>
-                    {gruppe.onlineLink
-                      ? "💻 Der Online-Link öffnet sich gleich automatisch in einem neuen Tab."
-                      : "💻 Deinen Zoom-Zugang findest du in der WhatsApp-Gruppenbeschreibung – die Bestätigung kommt gleich auch per E-Mail."}
+                    Du wirst gleich in einem neuen Tab zur Rückmeldeseite weitergeleitet – dort trägst du kurz deine E-Mail-Adresse ein.
                   </div>
                 )}
               </div>
@@ -771,10 +719,6 @@ export default function App() {
               <input style={S.input} type="date" value={newEnd} onChange={e => setNewEnd(e.target.value)} />
             </div>
           </div>
-          <div style={{ marginBottom: 11 }}>
-            <label style={S.label}>Online-Link (optional, z.B. Zoom) – öffnet sich automatisch bei „Online dabei"</label>
-            <input style={S.input} value={newOnlineLink} onChange={e => setNewOnlineLink(e.target.value)} placeholder="https://zoom.us/j/..." />
-          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 4 }}>
             <input type="checkbox" id="baby" checked={newBaby} onChange={e => setNewBaby(e.target.checked)} style={{ width: 17, height: 17, accentColor: C.warm }} />
             <label htmlFor="baby" style={{ fontSize: 14, color: C.text, cursor: "pointer" }}>🛒 Baby-Kurs (Kinderwagen-Option anzeigen)</label>
@@ -791,40 +735,22 @@ export default function App() {
             {Object.entries(gruppen).map(([id, g]) => {
               const activeRemoved = removedDates[id] || [];
               const isEditing = editTermine === id;
-              const isEditingLink = editLinkId === id;
               return (
                 <div key={id} style={{ marginBottom: 14 }}>
                   <div style={S.gruppeCard(isEditing)}>
                     <div>
                       <div style={{ fontSize: 16, fontWeight: 600 }}>{g.name}</div>
                       <div style={{ fontSize: 12, color: "#9c6b55", marginTop: 2 }}>
-                        {WOCHENTAGE[g.wochentag]} · {g.uhrzeit} Uhr · {g.dates.length - activeRemoved.length} Termine{g.baby ? " · 🛒" : ""}{g.onlineLink ? " · 🔗" : ""}
+                        {WOCHENTAGE[g.wochentag]} · {g.uhrzeit} Uhr · {g.dates.length - activeRemoved.length} Termine{g.baby ? " · 🛒" : ""}
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 7 }}>
-                      <button style={S.secondaryBtn} onClick={() => { setEditLinkId(isEditingLink ? null : id); setLinkDraft(g.onlineLink || ""); }}>
-                        {g.onlineLink ? "🔗 Link" : "＋ Link"}
-                      </button>
                       <button style={S.secondaryBtn} onClick={() => setEditTermine(isEditing ? null : id)}>
                         {isEditing ? "Schließen" : "Termine"}
                       </button>
                       <button style={S.dangerBtn} onClick={() => deleteGruppe(id)}>Löschen</button>
                     </div>
                   </div>
-
-                  {/* Online-Link bearbeiten */}
-                  {isEditingLink && (
-                    <div style={{ background: "rgba(180,130,110,0.05)", borderRadius: 11, padding: 14, marginTop: 4, marginBottom: 6 }}>
-                      <label style={S.label}>Online-Link (Zoom o.ä.) – öffnet sich automatisch für Teilnehmerinnen mit „Online dabei"</label>
-                      <input style={{ ...S.input, marginBottom: 8 }} value={linkDraft} onChange={e => setLinkDraft(e.target.value)} placeholder="https://zoom.us/j/..." autoFocus />
-                      <div style={{ display: "flex", gap: 7 }}>
-                        <button style={{ ...S.primaryBtn, width: "auto", flex: 1, padding: "7px 0", fontSize: 13, marginTop: 0 }} onClick={() => saveOnlineLink(id)}>
-                          Speichern
-                        </button>
-                        <button style={S.secondaryBtn} onClick={() => { setEditLinkId(null); setLinkDraft(""); }}>Abbrechen</button>
-                      </div>
-                    </div>
-                  )}
 
                   {/* Teilnehmer-Link */}
                   <div style={S.linkBox}>
