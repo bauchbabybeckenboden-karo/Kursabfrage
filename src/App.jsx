@@ -27,9 +27,9 @@ function getEaster(year) {
   const m = Math.floor((a + 11 * h + 22 * l) / 451);
   const month = Math.floor((h + l - 7 * m + 114) / 31);
   const day = ((h + l - 7 * m + 114) % 31) + 1;
-  return new Date(year, month - 1, day);
+  return new Date(Date.UTC(year, month - 1, day));
 }
-function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+function addDays(d, n) { const x = new Date(d); x.setUTCDate(x.getUTCDate() + n); return x; }
 function toISO(d) { return d.toISOString().split("T")[0]; }
 function hessianHolidays(year) {
   const e = getEaster(year);
@@ -48,7 +48,7 @@ function computeDates(wochentag, startStr, endStr) {
   while (cur.getDay() !== Number(wochentag)) cur.setDate(cur.getDate() + 1);
   while (cur <= end) {
     const iso = toISO(cur);
-    if (!hessianHolidays(cur.getFullYear()).has(iso)) termine.push(iso);
+    termine.push(iso);
     cur.setDate(cur.getDate() + 7);
   }
   return termine;
@@ -76,7 +76,8 @@ const HESSEN_FERIEN = [
   ["2030-07-22", "2030-08-30"], // Sommerferien 2029/30
 ];
 function isFerientermin(iso) {
-  return HESSEN_FERIEN.some(([start, end]) => iso >= start && iso <= end);
+  return HESSEN_FERIEN.some(([start, end]) => iso >= start && iso <= end)
+    || hessianHolidays(Number(iso.slice(0, 4))).has(iso);
 }
 
 // ─── Storage ─────────────────────────────────────────────────────────────────
@@ -435,6 +436,16 @@ export default function App() {
     await saveRemoved({ ...removedDates, [gid]: updated });
   };
 
+  // Einzelne Anmeldung (Name) bei einem Termin entfernen
+  const removeVoteEntry = async (gid, date, optKey, entryId) => {
+    if (!window.confirm("Diesen Eintrag entfernen?")) return;
+    const voteKey = `${gid}_${date}`;
+    const frisch = (await sget("bbb_votes_v2")) || votes;
+    const cur = normalizeVotes(frisch[voteKey]);
+    const updated = { ...cur, [optKey]: cur[optKey].filter(e => e.id !== entryId) };
+    await saveVotes({ ...frisch, [voteKey]: updated });
+  };
+
   const saveNotiz = async (gid, date) => {
     const key = `${gid}_${date}`;
     const n = { ...notizen, [key]: notizDraft };
@@ -452,22 +463,30 @@ export default function App() {
 
   const handleVote = async (termin, option, gruppe) => {
     if (!gruppeId || !isChangeable(termin, gruppe.uhrzeit)) return;
-    if (!teilnehmerName.trim()) return; // Namenspflicht: ohne Namen keine Anmeldung
+    const name = teilnehmerName.trim();
+    if (!name) return; // Namenspflicht: ohne Namen keine Anmeldung
 
     const teilnehmerId = getTeilnehmerId();
     const voteKey = `${gruppeId}_${termin}`;
-    const curVotes = normalizeVotes(votes[voteKey]);
-    const prev = myVotes[termin];
-    const updated = { ...curVotes };
+    const meinName = name.toLowerCase();
+    // Eigener Eintrag = gleiche Geräte-ID ODER gleicher Name (z.B. anderes Handy/Browser)
+    const istMein = (e) => e.id === teilnehmerId || (e.name && e.name.trim().toLowerCase() === meinName);
 
-    // eigene bisherige Stimme entfernen (egal in welcher Option sie stand)
-    if (prev && updated[prev]) {
-      updated[prev] = updated[prev].filter(e => e.id !== teilnehmerId);
+    // Frischen Stand vom Server holen, damit Änderungen anderer Teilnehmerinnen
+    // nicht mit einem veralteten Seitenstand überschrieben werden.
+    const frisch = (await sget("bbb_votes_v2")) || votes;
+    const curVotes = normalizeVotes(frisch[voteKey]);
+    const prev = myVotes[termin];
+
+    // eigene bisherige Stimme aus ALLEN Optionen entfernen
+    const updated = {};
+    for (const k of Object.keys(curVotes)) {
+      updated[k] = curVotes[k].filter(e => !istMein(e));
     }
 
     const newMyVotes = { ...myVotes };
     if (prev !== option) {
-      updated[option] = [...(updated[option] || []), { id: teilnehmerId, name: teilnehmerName.trim(), ts: Date.now() }];
+      updated[option] = [...updated[option], { id: teilnehmerId, name, ts: Date.now() }];
       newMyVotes[termin] = option;
       localStorage.setItem(`myvote_${gruppeId}_${termin}`, option);
 
@@ -483,7 +502,7 @@ export default function App() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            name: teilnehmerName.trim(),
+            name,
             kursart: gruppe.name,
             meldung: optionLabel(option),
             termin: formatDate(termin),
@@ -496,7 +515,7 @@ export default function App() {
       localStorage.removeItem(`myvote_${gruppeId}_${termin}`);
     }
     setMyVotes(newMyVotes);
-    await saveVotes({ ...votes, [voteKey]: updated });
+    await saveVotes({ ...frisch, [voteKey]: updated });
   };
 
   const getLink = (id) => `${window.location.origin}${window.location.pathname}?gruppe=${id}`;
@@ -766,7 +785,7 @@ export default function App() {
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                         <div style={S.sectionLabel}>Termine verwalten</div>
                         <button style={{ ...S.secondaryBtn, fontSize: 11 }} onClick={() => hideFerien(id)}>
-                          🏖️ Ferien ausblenden
+                          🏖️ Ferien & Feiertage ausblenden
                         </button>
                       </div>
                       {g.dates.map(date => {
@@ -783,7 +802,7 @@ export default function App() {
                                 {formatDate(date)}
                                 {istFerien && (
                                   <span style={{ fontSize: 10, color: "#5a7ec0", fontStyle: "italic", marginLeft: 6, textDecoration: "none" }}>
-                                    🏖️ Ferien
+                                    {hessianHolidays(Number(date.slice(0, 4))).has(date) ? "Feiertag" : "🏖️ Ferien"}
                                   </span>
                                 )}
                               </span>
@@ -830,6 +849,23 @@ export default function App() {
                                 </div>
                               </div>
                             )}
+
+                            {/* Anmeldungen dieses Termins (einzeln entfernbar) */}
+                            {(() => {
+                              const cv = normalizeVotes(votes[notizKey]);
+                              const eintraege = ["kommt", "kinderwagen", "online", "kommt_nicht"].flatMap(k => cv[k].map(e => ({ k, e })));
+                              if (eintraege.length === 0) return null;
+                              return (
+                                <div style={{ padding: "2px 10px 8px", display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                  {eintraege.map(({ k, e }) => (
+                                    <span key={`${k}-${e.id}`} style={{ fontSize: 11, color: "#7a5040", background: "rgba(196,137,110,0.10)", borderRadius: 8, padding: "2px 4px 2px 8px" }}>
+                                      {optionLabel(k)}: {e.name || "Anonym"}
+                                      <button style={{ ...S.dangerBtn, fontSize: 10, padding: "0 6px", marginLeft: 4 }} onClick={() => removeVoteEntry(id, date, k, e.id)}>✕</button>
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            })()}
 
                             {/* Notiz-Vorschau */}
                             {!isEditingNotiz && hasNotiz && (
