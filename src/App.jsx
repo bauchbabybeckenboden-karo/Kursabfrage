@@ -404,12 +404,6 @@ export default function App() {
       },
     };
     await saveGruppen(g);
-    // Termine in den hessischen Schulferien direkt als "entfernt" markieren
-    // (durchgestrichen) – kann jederzeit über ✕/↩ pro Termin wieder freigegeben werden.
-    const ferienDates = dates.filter(isFerientermin);
-    if (ferienDates.length > 0) {
-      await saveRemoved({ ...removedDates, [id]: ferienDates });
-    }
     setNewName(""); setNewStart(""); setNewEnd(""); setNewBaby(false);
     setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
