@@ -360,6 +360,8 @@ export default function App() {
   const [zeigeAlteTermine, setZeigeAlteTermine] = useState(false);
   const [zeitAb, setZeitAb] = useState("");
   const [zeitNeu, setZeitNeu] = useState("");
+  const [nameGid, setNameGid] = useState(null);
+  const [nameNeu, setNameNeu] = useState("");
   const [notizDraft, setNotizDraft] = useState("");
 
   useEffect(() => {
@@ -429,6 +431,16 @@ export default function App() {
     const neu = gruppe.dates.filter(d => isFerientermin(d) && !cur.includes(d));
     if (neu.length === 0) return;
     await saveRemoved({ ...removedDates, [gid]: neu });
+  };
+
+  // Kursbezeichnung ändern – die ID (und damit der Link der Gruppe) bleibt gleich
+  const saveGruppenName = async (gid) => {
+    const g = gruppen[gid];
+    const neu = nameNeu.trim();
+    if (!g || !neu || neu === g.name) { setNameGid(null); return; }
+    await saveGruppen({ ...gruppen, [gid]: { ...g, name: neu } });
+    setNameGid(null);
+    setNameNeu("");
   };
 
   // Neue Uhrzeit ab einem bestimmten Termin (Kursphase) speichern
@@ -812,6 +824,19 @@ export default function App() {
                           🏖️ Ferien & Feiertage ausblenden
                         </button>
                       </div>
+                      {/* Kursbezeichnung ändern (Link bleibt gleich) */}
+                      <div style={{ background: "rgba(255,255,255,0.6)", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                        <div style={{ ...S.sectionLabel, marginBottom: 6 }}>Kursbezeichnung ändern</div>
+                        <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
+                          <input
+                            style={{ ...S.input, flex: 1, minWidth: 180, width: "auto" }}
+                            value={nameGid === id ? nameNeu : g.name}
+                            onChange={e => { setNameGid(id); setNameNeu(e.target.value); }}
+                          />
+                          <button style={S.secondaryBtn} onClick={() => saveGruppenName(id)}>Speichern</button>
+                        </div>
+                      </div>
+
                       {/* Uhrzeit ab einem bestimmten Termin ändern (neue Kursphase) */}
                       <div style={{ background: "rgba(255,255,255,0.6)", borderRadius: 10, padding: 10, marginBottom: 12 }}>
                         <div style={{ ...S.sectionLabel, marginBottom: 6 }}>Uhrzeit ab einem Termin ändern</div>
