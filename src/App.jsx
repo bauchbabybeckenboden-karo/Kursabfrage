@@ -151,6 +151,15 @@ function optionLabel(opt) {
 }
 
 // Termin verschwindet 120 Minuten nach Kursbeginn
+// Uhrzeit eines Termins: Standard-Uhrzeit der Gruppe, ab einem Termin ggf. durch
+// eine "Zeit-Phase" (gruppe.zeitphasen = [{ ab: "YYYY-MM-DD", uhrzeit: "HH:MM" }]) ersetzt.
+function uhrzeitFuer(gruppe, iso) {
+  let z = gruppe.uhrzeit;
+  const phasen = [...(gruppe.zeitphasen || [])].sort((a, b) => a.ab.localeCompare(b.ab));
+  for (const p of phasen) if (p.ab <= iso) z = p.uhrzeit;
+  return z;
+}
+
 function isVisible(iso, uhrzeit) {
   const now = new Date();
   const todayISO = toISO(now);
@@ -348,6 +357,9 @@ export default function App() {
   const [newBaby, setNewBaby] = useState(false);
   const [editTermine, setEditTermine] = useState(null);
   const [editNotizKey, setEditNotizKey] = useState(null);
+  const [zeigeAlteTermine, setZeigeAlteTermine] = useState(false);
+  const [zeitAb, setZeitAb] = useState("");
+  const [zeitNeu, setZeitNeu] = useState("");
   const [notizDraft, setNotizDraft] = useState("");
 
   useEffect(() => {
@@ -382,7 +394,7 @@ export default function App() {
     const gruppe = gruppen[gruppeId];
     if (!gruppe) return;
     const activeRemoved = removedDates[gruppeId] || [];
-    const visible = gruppe.dates.filter(d => !activeRemoved.includes(d) && isVisible(d, gruppe.uhrzeit));
+    const visible = gruppe.dates.filter(d => !activeRemoved.includes(d) && isVisible(d, uhrzeitFuer(gruppe, d)));
     if (visible.length > 0 && !selectedTermin) setSelectedTermin(visible[0]);
   }, [gruppen, removedDates]);
 
@@ -417,6 +429,24 @@ export default function App() {
     const neu = gruppe.dates.filter(d => isFerientermin(d) && !cur.includes(d));
     if (neu.length === 0) return;
     await saveRemoved({ ...removedDates, [gid]: neu });
+  };
+
+  // Neue Uhrzeit ab einem bestimmten Termin (Kursphase) speichern
+  const addZeitphase = async (gid) => {
+    const g = gruppen[gid];
+    if (!g || !zeitAb || !/^\d{2}:\d{2}$/.test(zeitNeu)) return;
+    const phasen = (g.zeitphasen || []).filter(p => p.ab !== zeitAb);
+    phasen.push({ ab: zeitAb, uhrzeit: zeitNeu });
+    phasen.sort((a, b) => a.ab.localeCompare(b.ab));
+    await saveGruppen({ ...gruppen, [gid]: { ...g, zeitphasen: phasen } });
+    setZeitAb("");
+    setZeitNeu("");
+  };
+
+  const removeZeitphase = async (gid, ab) => {
+    const g = gruppen[gid];
+    if (!g) return;
+    await saveGruppen({ ...gruppen, [gid]: { ...g, zeitphasen: (g.zeitphasen || []).filter(p => p.ab !== ab) } });
   };
 
   const deleteGruppe = async (id) => {
@@ -456,7 +486,7 @@ export default function App() {
   };
 
   const handleVote = async (termin, option, gruppe) => {
-    if (!gruppeId || !isChangeable(termin, gruppe.uhrzeit)) return;
+    if (!gruppeId || !isChangeable(termin, uhrzeitFuer(gruppe, termin))) return;
     const name = teilnehmerName.trim();
     if (!name) return; // Namenspflicht: ohne Namen keine Anmeldung
 
@@ -500,7 +530,7 @@ export default function App() {
             kursart: gruppe.name,
             meldung: optionLabel(option),
             termin: formatDate(termin),
-            uhrzeit: gruppe.uhrzeit,
+            uhrzeit: uhrzeitFuer(gruppe, termin),
           }),
         }).catch((e) => console.warn("notify-kursmeldung fehlgeschlagen:", e));
       }
@@ -537,7 +567,7 @@ export default function App() {
     );
 
     const activeRemoved = removedDates[gruppeId] || [];
-    const visibleDates = gruppe.dates.filter(d => !activeRemoved.includes(d) && isVisible(d, gruppe.uhrzeit));
+    const visibleDates = gruppe.dates.filter(d => !activeRemoved.includes(d) && isVisible(d, uhrzeitFuer(gruppe, d)));
 
     if (visibleDates.length === 0) return (
       <div style={S.app}>{fonts}
@@ -555,7 +585,7 @@ export default function App() {
     );
 
     const termin = selectedTermin && visibleDates.includes(selectedTermin) ? selectedTermin : visibleDates[0];
-    const changeable = isChangeable(termin, gruppe.uhrzeit);
+    const changeable = isChangeable(termin, uhrzeitFuer(gruppe, termin));
     const voteKey = `${gruppeId}_${termin}`;
     const curVotes = normalizeVotes(votes[voteKey]);
     const total = curVotes.kommt.length + curVotes.online.length + curVotes.kinderwagen.length;
@@ -597,7 +627,7 @@ export default function App() {
           <div style={S.card}>
             <div style={S.sectionLabel}>Kursstunde</div>
             <div style={S.terminDate}>{formatDate(termin)}</div>
-            <div style={S.terminTime}>🕐 {gruppe.uhrzeit} Uhr</div>
+            <div style={S.terminTime}>🕐 {uhrzeitFuer(gruppe, termin)} Uhr</div>
 
             {/* Bemerkung / Notiz */}
             {notiz && <div style={S.notizBadge}>📌 {notiz}</div>}
@@ -782,7 +812,44 @@ export default function App() {
                           🏖️ Ferien & Feiertage ausblenden
                         </button>
                       </div>
-                      {g.dates.map(date => {
+                      {/* Uhrzeit ab einem bestimmten Termin ändern (neue Kursphase) */}
+                      <div style={{ background: "rgba(255,255,255,0.6)", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                        <div style={{ ...S.sectionLabel, marginBottom: 6 }}>Uhrzeit ab einem Termin ändern</div>
+                        {(g.zeitphasen || []).map(p => (
+                          <div key={p.ab} style={{ fontSize: 12, color: C.text, display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                            <span>ab {formatDate(p.ab)}: {p.uhrzeit} Uhr</span>
+                            <button style={{ ...S.dangerBtn, fontSize: 10, padding: "0 6px" }} onClick={() => removeZeitphase(id, p.ab)}>✕</button>
+                          </div>
+                        ))}
+                        <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
+                          <select style={{ ...S.input, flex: 1, minWidth: 130, width: "auto" }} value={zeitAb} onChange={e => setZeitAb(e.target.value)}>
+                            <option value="">Ab Termin ...</option>
+                            {g.dates.filter(d => !activeRemoved.includes(d) && isVisible(d, uhrzeitFuer(g, d))).map(d => (
+                              <option key={d} value={d}>{formatDate(d)}</option>
+                            ))}
+                          </select>
+                          <input style={{ ...S.input, width: 110 }} type="time" value={zeitNeu} onChange={e => setZeitNeu(e.target.value)} />
+                          <button style={S.secondaryBtn} onClick={() => addZeitphase(id)}>Speichern</button>
+                        </div>
+                      </div>
+
+                      {/* Vergangene Termine: nur die letzten 2 anzeigen, ältere ausblenden */}
+                      {(() => {
+                        const anzahlAlt = g.dates.filter(d => d < toISO(new Date())).length - 2;
+                        if (anzahlAlt <= 0) return null;
+                        return (
+                          <button style={{ ...S.secondaryBtn, fontSize: 11, marginBottom: 10 }} onClick={() => setZeigeAlteTermine(!zeigeAlteTermine)}>
+                            {zeigeAlteTermine ? "Ältere Termine ausblenden" : `Ältere Termine anzeigen (${anzahlAlt})`}
+                          </button>
+                        );
+                      })()}
+
+                      {(() => {
+                        const heuteISO = toISO(new Date());
+                        const vergangen = g.dates.filter(d => d < heuteISO);
+                        const versteckt = zeigeAlteTermine ? [] : vergangen.slice(0, Math.max(0, vergangen.length - 2));
+                        return g.dates.filter(d => !versteckt.includes(d));
+                      })().map(date => {
                         const isRemoved = activeRemoved.includes(date);
                         const istFerien = isFerientermin(date);
                         const notizKey = `${id}_${date}`;

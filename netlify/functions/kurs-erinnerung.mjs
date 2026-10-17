@@ -1,12 +1,12 @@
 // Ziel im Repo: netlify/functions/kurs-erinnerung.mjs (NEUE Datei)
 //
 // ERSETZT abend-zusammenfassung.mjs (bitte aus dem Repo löschen) – statt am
-// Vorabend kommt die Mail jetzt 15 Minuten vor Kursbeginn, mit der
+// Vorabend kommt die Mail jetzt 30 Minuten vor Kursbeginn, mit der
 // aktuellen Anmeldeliste (inkl. Namen).
 //
 // Läuft alle 5 Minuten (Netlify erlaubt keine "auf die Minute genau vor X"-
 // Schedules, nur feste Cron-Intervalle) und prüft, ob irgendein Kurs in den
-// nächsten 10–15 Minuten beginnt. Ein Blob-Eintrag verhindert doppelten
+// nächsten 25–30 Minuten beginnt. Ein Blob-Eintrag verhindert doppelten
 // Versand, falls der Cron im Fenster mehrfach läuft.
 //
 // Umgebungsvariablen (in Netlify UI setzen):
@@ -22,8 +22,17 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const AN  = "kontakt@bauch-baby-beckenboden.com";
 const VON = "Kursapp <kontakt@bauch-baby-beckenboden.com>";
 
-const VORLAUF_MIN = 15; // Minuten vor Kursbeginn
+const VORLAUF_MIN = 30; // Minuten vor Kursbeginn
 const FENSTER_MIN = 5;  // Toleranzfenster = Cron-Intervall
+
+// Uhrzeit eines Termins: Standard der Gruppe, ab einem Termin ggf. durch eine
+// "Zeit-Phase" (gruppe.zeitphasen = [{ ab: "YYYY-MM-DD", uhrzeit: "HH:MM" }]) ersetzt.
+function uhrzeitFuer(gruppe, iso) {
+  let z = gruppe.uhrzeit;
+  const phasen = [...(gruppe.zeitphasen || [])].sort((a, b) => a.ab.localeCompare(b.ab));
+  for (const p of phasen) if (p.ab <= iso) z = p.uhrzeit;
+  return z;
+}
 
 function formatDateDE(iso) {
   const d = new Date(iso + "T12:00:00");
@@ -71,7 +80,7 @@ function buildHtml({ gruppe, termin, votes, notiz }) {
       <div style="background:linear-gradient(135deg,#c4896e,#a06848);padding:24px 28px;">
         <div style="font-size:12px;letter-spacing:0.15em;text-transform:uppercase;color:rgba(255,255,255,0.8);margin-bottom:6px;">In ${VORLAUF_MIN} Minuten</div>
         <div style="font-size:22px;font-weight:700;color:#fff;">${gruppe.name} 🌸</div>
-        <div style="font-size:13px;color:rgba(255,255,255,0.85);margin-top:4px;">${formatDateDE(termin)} · ${gruppe.uhrzeit} Uhr</div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.85);margin-top:4px;">${formatDateDE(termin)} · ${uhrzeitFuer(gruppe, termin)} Uhr</div>
       </div>
       <div style="padding:24px 28px;">
         ${notiz ? `<div style="font-size:13px;color:#7a5040;font-style:italic;background:rgba(196,137,110,0.1);border-radius:8px;padding:8px 12px;margin-bottom:16px;">📌 ${notiz}</div>` : ""}
@@ -108,11 +117,11 @@ const handler = async () => {
       const removed = removedData[id] || [];
       if (!gruppe.dates.includes(heute) || removed.includes(heute)) continue;
 
-      const [h, m] = gruppe.uhrzeit.split(":").map(Number);
+      const [h, m] = uhrzeitFuer(gruppe, heute).split(":").map(Number);
       const kursMinuten = h * 60 + m;
       const minutenBisKurs = kursMinuten - jetzt;
 
-      // Fenster: 10–15 Minuten vor Kursbeginn (Cron läuft alle 5 Minuten)
+      // Fenster: 25–30 Minuten vor Kursbeginn (Cron läuft alle 5 Minuten)
       if (minutenBisKurs > VORLAUF_MIN || minutenBisKurs <= VORLAUF_MIN - FENSTER_MIN) continue;
 
       const sendKey = `${id}_${heute}`;
