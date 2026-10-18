@@ -402,7 +402,7 @@ export default function App() {
 
   const saveGruppen = async (g) => { setGruppen(g); await sset("bbb_gruppen_v2", g); };
   const saveVotes   = async (v) => { setVotes(v);   await sset("bbb_votes_v2", v); };
-  const saveRemoved = async (r) => { setRemovedDates(r); await sset("bbb_removed_v2", r); fetch("/.netlify/functions/ausfall-sync", { method: "POST" }).catch(() => {}); };
+  const saveRemoved = async (r) => { setRemovedDates(r); await sset("bbb_removed_v2", r); await fetch("/.netlify/functions/ausfall-sync", { method: "POST" }).catch((e) => console.error("Ausfall-Sync fehlgeschlagen:", e)); };
   const saveNotizen = async (n) => { setNotizen(n); await sset("bbb_notizen_v2", n); };
 
   const addGruppe = async () => {
