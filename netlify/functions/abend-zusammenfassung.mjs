@@ -68,29 +68,29 @@ function buildHtml(kurse) {
     const total = (votes.kommt || 0) + (votes.online || 0) + (votes.kinderwagen || 0);
     return `
       <div style="background:#fdf8f5;border-radius:16px;padding:20px 24px;margin-bottom:16px;border:1px solid #e8d5c8;">
-        <div style="font-size:18px;font-weight:700;color:#2d1f1a;margin-bottom:4px;">${gruppe.name}</div>
-        <div style="font-size:14px;color:#9c6b55;margin-bottom:${notiz ? "8px" : "16px"};">${formatDateDE(termin)} · ${gruppe.uhrzeit} Uhr</div>
-        ${notiz ? `<div style="font-size:13px;color:#7a5040;font-style:italic;background:rgba(196,137,110,0.1);border-radius:8px;padding:6px 12px;margin-bottom:14px;">📌 ${notiz}</div>` : ""}
+        <div style="font-size:18px;font-weight:700;color:#3D2B2B;margin-bottom:4px;">${gruppe.name}</div>
+        <div style="font-size:14px;color:#8B6464;margin-bottom:${notiz ? "8px" : "16px"};">${formatDateDE(termin)} · ${gruppe.uhrzeit} Uhr</div>
+        ${notiz ? `<div style="font-size:13px;color:#8B6464;font-style:italic;background:rgba(196,137,110,0.1);border-radius:8px;padding:6px 12px;margin-bottom:14px;">📌 ${notiz}</div>` : ""}
         <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="padding:8px 0;border-bottom:1px solid #ede0d8;font-size:15px;color:#5a3a2e;">✅ Kommen vor Ort</td>
-            <td style="padding:8px 0;border-bottom:1px solid #ede0d8;text-align:right;font-size:20px;font-weight:700;color:#5a9e6e;">${votes.kommt || 0}</td>
+            <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;font-size:15px;color:#3D2B2B;">✅ Kommen vor Ort</td>
+            <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;text-align:right;font-size:20px;font-weight:700;color:#5a9e6e;">${votes.kommt || 0}</td>
           </tr>
           ${gruppe.baby ? `<tr>
-            <td style="padding:8px 0;border-bottom:1px solid #ede0d8;font-size:15px;color:#5a3a2e;">🛒 Mit Kinderwagen</td>
-            <td style="padding:8px 0;border-bottom:1px solid #ede0d8;text-align:right;font-size:20px;font-weight:700;color:#c08040;">${votes.kinderwagen || 0}</td>
+            <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;font-size:15px;color:#3D2B2B;">🛒 Mit Kinderwagen</td>
+            <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;text-align:right;font-size:20px;font-weight:700;color:#C4A0A0;">${votes.kinderwagen || 0}</td>
           </tr>` : ""}
           <tr>
-            <td style="padding:8px 0;border-bottom:1px solid #ede0d8;font-size:15px;color:#5a3a2e;">💻 Online dabei</td>
-            <td style="padding:8px 0;border-bottom:1px solid #ede0d8;text-align:right;font-size:20px;font-weight:700;color:#5a7ec0;">${votes.online || 0}</td>
+            <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;font-size:15px;color:#3D2B2B;">💻 Online dabei</td>
+            <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;text-align:right;font-size:20px;font-weight:700;color:#5a7ec0;">${votes.online || 0}</td>
           </tr>
           <tr>
-            <td style="padding:8px 0;border-bottom:1px solid #ede0d8;font-size:15px;color:#5a3a2e;">😖 Kommen nicht</td>
-            <td style="padding:8px 0;border-bottom:1px solid #ede0d8;text-align:right;font-size:20px;font-weight:700;color:#c05040;">${votes.kommt_nicht || 0}</td>
+            <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;font-size:15px;color:#3D2B2B;">😖 Kommen nicht</td>
+            <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;text-align:right;font-size:20px;font-weight:700;color:#c05040;">${votes.kommt_nicht || 0}</td>
           </tr>
           <tr>
-            <td style="padding:10px 0 0;font-size:15px;font-weight:600;color:#2d1f1a;">Gesamt vor Ort</td>
-            <td style="padding:10px 0 0;text-align:right;font-size:22px;font-weight:700;color:#c4896e;">${total}</td>
+            <td style="padding:10px 0 0;font-size:15px;font-weight:600;color:#3D2B2B;">Gesamt vor Ort</td>
+            <td style="padding:10px 0 0;text-align:right;font-size:22px;font-weight:700;color:#C4A0A0;">${total}</td>
           </tr>
         </table>
       </div>`;
@@ -98,7 +98,7 @@ function buildHtml(kurse) {
 
   return `
     <div style="font-family:'Georgia',serif;max-width:560px;margin:0 auto;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(120,70,50,0.08);">
-      <div style="background:linear-gradient(135deg,#c4896e,#a06848);padding:28px 32px;">
+      <div style="background:linear-gradient(135deg,#C4A0A0,#8B6464);padding:28px 32px;">
         <div style="font-size:13px;letter-spacing:0.15em;text-transform:uppercase;color:rgba(255,255,255,0.8);margin-bottom:6px;">Abend-Zusammenfassung</div>
         <div style="font-size:26px;font-weight:700;color:#fff;">Kurse morgen früh 🌸</div>
       </div>

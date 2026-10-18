@@ -77,22 +77,22 @@ function buildHtml({ gruppe, termin, votes, notiz }) {
   const total = votes.kommt.length + votes.online.length + votes.kinderwagen.length;
   return `
     <div style="font-family:'Georgia',serif;max-width:520px;margin:0 auto;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(120,70,50,0.08);">
-      <div style="background:linear-gradient(135deg,#c4896e,#a06848);padding:24px 28px;">
+      <div style="background:linear-gradient(135deg,#C4A0A0,#8B6464);padding:24px 28px;">
         <div style="font-size:12px;letter-spacing:0.15em;text-transform:uppercase;color:rgba(255,255,255,0.8);margin-bottom:6px;">In ${VORLAUF_MIN} Minuten</div>
         <div style="font-size:22px;font-weight:700;color:#fff;">${gruppe.name} 🌸</div>
         <div style="font-size:13px;color:rgba(255,255,255,0.85);margin-top:4px;">${formatDateDE(termin)} · ${uhrzeitFuer(gruppe, termin)} Uhr</div>
       </div>
       <div style="padding:24px 28px;">
-        ${notiz ? `<div style="font-size:13px;color:#7a5040;font-style:italic;background:rgba(196,137,110,0.1);border-radius:8px;padding:8px 12px;margin-bottom:16px;">📌 ${notiz}</div>` : ""}
+        ${notiz ? `<div style="font-size:13px;color:#8B6464;font-style:italic;background:rgba(196,137,110,0.1);border-radius:8px;padding:8px 12px;margin-bottom:16px;">📌 ${notiz}</div>` : ""}
         <table style="width:100%;border-collapse:collapse;">
-          <tr><td style="padding:6px 0;font-size:14px;color:#5a3a2e;">✅ Vor Ort</td><td style="padding:6px 0;text-align:right;font-weight:700;color:#5a9e6e;">${votes.kommt.length}</td></tr>
-          <tr><td colspan="2" style="padding:0 0 8px;font-size:12px;color:#9c6b55;">${namesLine(votes.kommt)}</td></tr>
+          <tr><td style="padding:6px 0;font-size:14px;color:#3D2B2B;">✅ Vor Ort</td><td style="padding:6px 0;text-align:right;font-weight:700;color:#5a9e6e;">${votes.kommt.length}</td></tr>
+          <tr><td colspan="2" style="padding:0 0 8px;font-size:12px;color:#8B6464;">${namesLine(votes.kommt)}</td></tr>
           ${gruppe.baby ? `
-          <tr><td style="padding:6px 0;font-size:14px;color:#5a3a2e;">🛒 Mit Kinderwagen</td><td style="padding:6px 0;text-align:right;font-weight:700;color:#c08040;">${votes.kinderwagen.length}</td></tr>
-          <tr><td colspan="2" style="padding:0 0 8px;font-size:12px;color:#9c6b55;">${namesLine(votes.kinderwagen)}</td></tr>` : ""}
-          <tr><td style="padding:6px 0;font-size:14px;color:#5a3a2e;">💻 Online</td><td style="padding:6px 0;text-align:right;font-weight:700;color:#5a7ec0;">${votes.online.length}</td></tr>
-          <tr><td colspan="2" style="padding:0 0 8px;font-size:12px;color:#9c6b55;">${namesLine(votes.online)}</td></tr>
-          <tr><td style="padding:10px 0 0;font-weight:600;color:#2d1f1a;">Gesamt vor Ort</td><td style="padding:10px 0 0;text-align:right;font-size:18px;font-weight:700;color:#c4896e;">${total}</td></tr>
+          <tr><td style="padding:6px 0;font-size:14px;color:#3D2B2B;">🛒 Mit Kinderwagen</td><td style="padding:6px 0;text-align:right;font-weight:700;color:#C4A0A0;">${votes.kinderwagen.length}</td></tr>
+          <tr><td colspan="2" style="padding:0 0 8px;font-size:12px;color:#8B6464;">${namesLine(votes.kinderwagen)}</td></tr>` : ""}
+          <tr><td style="padding:6px 0;font-size:14px;color:#3D2B2B;">💻 Online</td><td style="padding:6px 0;text-align:right;font-weight:700;color:#5a7ec0;">${votes.online.length}</td></tr>
+          <tr><td colspan="2" style="padding:0 0 8px;font-size:12px;color:#8B6464;">${namesLine(votes.online)}</td></tr>
+          <tr><td style="padding:10px 0 0;font-weight:600;color:#3D2B2B;">Gesamt vor Ort</td><td style="padding:10px 0 0;text-align:right;font-size:18px;font-weight:700;color:#C4A0A0;">${total}</td></tr>
         </table>
       </div>
     </div>`;

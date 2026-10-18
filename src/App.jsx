@@ -186,14 +186,14 @@ function isChangeable(iso, uhrzeit) {
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const C = {
   mauve: "#8B6464", bg: "#E8D5D0", text: "#3D2B2B", accent: "#C4A0A0",
-  warm: "#c4896e", warmDark: "#a06848", warmLight: "rgba(196,137,110,0.12)",
+  warm: "#C4A0A0", warmDark: "#8B6464", warmLight: "rgba(196,137,110,0.12)",
   card: "rgba(255,255,255,0.85)", border: "rgba(180,130,110,0.2)",
 };
 
 const S = {
   app: {
     minHeight: "100vh",
-    background: `linear-gradient(135deg, #f5ede8 0%, #fdf8f5 50%, #ede8e3 100%)`,
+    background: `linear-gradient(135deg, #F6EBE8 0%, #fdf8f5 50%, #ede8e3 100%)`,
     fontFamily: "'Cormorant Garamond', Georgia, serif",
     color: C.text,
   },
@@ -214,11 +214,11 @@ const S = {
     color: C.warm, marginBottom: 6, fontWeight: 600,
   },
   terminDate: { fontSize: 28, fontWeight: 700, color: C.text, lineHeight: 1.1, marginBottom: 4 },
-  terminTime: { fontSize: 15, color: "#9c6b55", marginBottom: 6 },
+  terminTime: { fontSize: 15, color: "#8B6464", marginBottom: 6 },
   notizBadge: {
     display: "inline-block", background: "rgba(196,137,110,0.1)",
     border: `1px solid rgba(196,137,110,0.25)`, borderRadius: 10,
-    padding: "5px 12px", fontSize: 13, color: "#7a5040",
+    padding: "5px 12px", fontSize: 13, color: "#8B6464",
     fontStyle: "italic", marginBottom: 16,
   },
   cutoffNote: {
@@ -235,7 +235,7 @@ const S = {
     fontWeight: active ? 700 : 500, whiteSpace: "nowrap",
     border: active ? `2px solid ${C.warm}` : `1.5px solid rgba(180,130,110,0.25)`,
     background: active ? C.warmLight : "rgba(255,255,255,0.6)",
-    color: active ? C.warmDark : "#9c6b55",
+    color: active ? C.warmDark : "#8B6464",
     cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
   }),
   responseGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },
@@ -251,7 +251,7 @@ const S = {
   responseBtnEmoji: { fontSize: 30, lineHeight: 1 },
   responseBtnLabel: (active, color) => ({
     fontSize: 13, fontWeight: active ? 700 : 500,
-    color: active ? color : "#9c6b55", letterSpacing: "0.02em",
+    color: active ? color : "#8B6464", letterSpacing: "0.02em",
   }),
   konfirmBox: {
     background: "rgba(140,200,140,0.1)", border: "1px solid rgba(100,180,100,0.28)",
@@ -267,7 +267,7 @@ const S = {
   },
   statLeft: { display: "flex", alignItems: "center", gap: 10 },
   namesLine: {
-    fontSize: 12, color: "#9c6b55", fontStyle: "italic",
+    fontSize: 12, color: "#8B6464", fontStyle: "italic",
     padding: "0 0 7px", borderBottom: `1px solid rgba(180,130,110,0.08)`,
   },
 
@@ -310,7 +310,7 @@ const S = {
   linkText: { fontSize: 12, color: "#7a5a4e", wordBreak: "break-all", flex: 1 },
   copyBtn: {
     padding: "5px 13px", borderRadius: 8, background: C.warmLight,
-    color: "#9c6b55", border: `1px solid rgba(180,130,110,0.25)`,
+    color: "#8B6464", border: `1px solid rgba(180,130,110,0.25)`,
     fontSize: 12, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit",
   },
   gruppeCard: (active) => ({
@@ -402,7 +402,7 @@ export default function App() {
 
   const saveGruppen = async (g) => { setGruppen(g); await sset("bbb_gruppen_v2", g); };
   const saveVotes   = async (v) => { setVotes(v);   await sset("bbb_votes_v2", v); };
-  const saveRemoved = async (r) => { setRemovedDates(r); await sset("bbb_removed_v2", r); };
+  const saveRemoved = async (r) => { setRemovedDates(r); await sset("bbb_removed_v2", r); fetch("/.netlify/functions/ausfall-sync", { method: "POST" }).catch(() => {}); };
   const saveNotizen = async (n) => { setNotizen(n); await sset("bbb_notizen_v2", n); };
 
   const addGruppe = async () => {
@@ -565,7 +565,7 @@ export default function App() {
   if (loading) return (
     <div style={{ ...S.app, display: "flex", alignItems: "center", justifyContent: "center" }}>
       {fonts}
-      <div style={{ fontSize: 18, color: "#9c6b55", fontStyle: "italic" }}>Lädt …</div>
+      <div style={{ fontSize: 18, color: "#8B6464", fontStyle: "italic" }}>Lädt …</div>
     </div>
   );
 
@@ -588,7 +588,7 @@ export default function App() {
         </div>
         <div style={S.page}>
           <div style={S.card}>
-            <p style={{ color: "#9c6b55", textAlign: "center", fontStyle: "italic" }}>
+            <p style={{ color: "#8B6464", textAlign: "center", fontStyle: "italic" }}>
               Aktuell sind keine weiteren Termine geplant. 🌸
             </p>
           </div>
@@ -609,7 +609,7 @@ export default function App() {
       { key: "kommt",       emoji: "✅", label: "Ich komme",       color: "#5a9e6e" },
       { key: "kommt_nicht", emoji: "😖", label: "Komme nicht",     color: "#c05040" },
       { key: "online",      emoji: "💻", label: "Online dabei",    color: "#5a7ec0" },
-      ...(gruppe.baby ? [{ key: "kinderwagen", emoji: "🛒", label: "Mit Kinderwagen", color: "#c08040" }] : []),
+      ...(gruppe.baby ? [{ key: "kinderwagen", emoji: "🛒", label: "Mit Kinderwagen", color: "#C4A0A0" }] : []),
     ];
 
     return (
@@ -714,9 +714,9 @@ export default function App() {
                   <div style={{ ...S.statRow, borderBottom: (isLast && names.length === 0) ? "none" : undefined }}>
                     <div style={S.statLeft}>
                       <span style={{ fontSize: 18 }}>{s.emoji}</span>
-                      <span style={{ fontSize: 15, color: "#5a3a2e" }}>{s.label}</span>
+                      <span style={{ fontSize: 15, color: "#3D2B2B" }}>{s.label}</span>
                     </div>
-                    <span style={{ fontSize: 22, fontWeight: 700, color: "#9c6b55" }}>{curVotes[s.key].length}</span>
+                    <span style={{ fontSize: 22, fontWeight: 700, color: "#8B6464" }}>{curVotes[s.key].length}</span>
                   </div>
                   {names.length > 0 && (
                     <div style={{ ...S.namesLine, borderBottom: isLast ? "none" : S.namesLine.borderBottom }}>
@@ -727,7 +727,7 @@ export default function App() {
               );
             })}
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid rgba(180,130,110,0.15)`, display: "flex", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 13, color: "#9c6b55" }}>Gesamt vor Ort</span>
+              <span style={{ fontSize: 13, color: "#8B6464" }}>Gesamt vor Ort</span>
               <span style={{ fontSize: 20, fontWeight: 700, color: C.warm }}>{total}</span>
             </div>
           </div>
@@ -795,7 +795,7 @@ export default function App() {
                   <div style={S.gruppeCard(isEditing)}>
                     <div>
                       <div style={{ fontSize: 16, fontWeight: 600 }}>{g.name}</div>
-                      <div style={{ fontSize: 12, color: "#9c6b55", marginTop: 2 }}>
+                      <div style={{ fontSize: 12, color: "#8B6464", marginTop: 2 }}>
                         {WOCHENTAGE[g.wochentag]} · {g.uhrzeit} Uhr · {g.dates.length - activeRemoved.length} Termine{g.baby ? " · 🛒" : ""}
                       </div>
                     </div>
@@ -944,7 +944,7 @@ export default function App() {
                               return (
                                 <div style={{ padding: "2px 10px 8px", display: "flex", flexWrap: "wrap", gap: 6 }}>
                                   {eintraege.map(({ k, e }) => (
-                                    <span key={`${k}-${e.id}`} style={{ fontSize: 11, color: "#7a5040", background: "rgba(196,137,110,0.10)", borderRadius: 8, padding: "2px 4px 2px 8px" }}>
+                                    <span key={`${k}-${e.id}`} style={{ fontSize: 11, color: "#8B6464", background: "rgba(196,137,110,0.10)", borderRadius: 8, padding: "2px 4px 2px 8px" }}>
                                       {optionLabel(k)}: {e.name || "Anonym"}
                                       <button style={{ ...S.dangerBtn, fontSize: 10, padding: "0 6px", marginLeft: 4 }} onClick={() => removeVoteEntry(id, date, k, e.id)}>✕</button>
                                     </span>
@@ -955,7 +955,7 @@ export default function App() {
 
                             {/* Notiz-Vorschau */}
                             {!isEditingNotiz && hasNotiz && (
-                              <div style={{ fontSize: 12, color: "#7a5040", fontStyle: "italic", padding: "3px 10px 6px", opacity: 0.85 }}>
+                              <div style={{ fontSize: 12, color: "#8B6464", fontStyle: "italic", padding: "3px 10px 6px", opacity: 0.85 }}>
                                 📌 {notizen[notizKey]}
                               </div>
                             )}

@@ -34,8 +34,8 @@ export default async (req) => {
               <div style="font-size:20px;font-weight:700;color:#fff;">💻 Jemand ist online dabei</div>
             </div>
             <div style="padding:22px 24px;">
-              <p style="font-size:16px;font-weight:700;color:#2d1f1a;margin:0 0 4px;">${kursname || "Kurs"}</p>
-              <p style="font-size:14px;color:#9c6b55;margin:0;">${termin || ""}${uhrzeit ? " · " + uhrzeit + " Uhr" : ""}</p>
+              <p style="font-size:16px;font-weight:700;color:#3D2B2B;margin:0 0 4px;">${kursname || "Kurs"}</p>
+              <p style="font-size:14px;color:#8B6464;margin:0;">${termin || ""}${uhrzeit ? " · " + uhrzeit + " Uhr" : ""}</p>
             </div>
           </div>`,
       }),
