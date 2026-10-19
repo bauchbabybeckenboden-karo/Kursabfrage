@@ -684,6 +684,12 @@ export default function App() {
               ))}
             </div>
 
+            {(myVote === "kommt_nicht" || myVote === "online") && (
+              <div style={{ fontSize: 13, color: "#7a3f3f", fontWeight: 600, marginTop: 8, lineHeight: 1.5 }}>
+                Für deinen Link und deine Nachholstunde: Schließe dieses Fenster nicht!
+              </div>
+            )}
+
             {myVote && (
               <div style={S.konfirmBox}>
                 <div style={{ fontSize: 15, fontWeight: 600, color: "#3a6b3a" }}>
