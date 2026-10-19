@@ -531,7 +531,7 @@ export default function App() {
         // E-Mail + Details erfasst, die Seite kümmert sich selbst um
         // Bestätigung an die Teilnehmerin und Kursmeldung an Karo).
         const absageQuery = new URLSearchParams({ name: name.trim(), kurs: gruppe.name, datum: termin, meldung: option === "online" ? "online" : "absage" }).toString();
-        setTimeout(() => window.open("https://bauch-baby-beckenboden-absage.netlify.app/?" + absageQuery, "_blank"), 800);
+        setTimeout(() => { window.location.href = "https://bauch-baby-beckenboden-absage.netlify.app/?" + absageQuery; }, 800);
       } else {
         // "kommt" / "kinderwagen": bleibt komplett hier – Karo bekommt
         // direkt eine Kursmeldung.
@@ -699,7 +699,7 @@ export default function App() {
                 <div style={{ fontSize: 13, color: "#5a8a5a", marginTop: 3 }}>Die Karo freut sich 🌸</div>
                 {(myVote === "kommt_nicht" || myVote === "online") && (
                   <div style={{ fontSize: 13, color: "#4a6a9a", marginTop: 8, fontStyle: "italic" }}>
-                    Gleich öffnet sich ein neuer Tab. Dort trägst du bitte deine E-Mail-Adresse ein und klickst auf „Jetzt Bescheid geben“. Erst dann ist deine Meldung bei mir angekommen.
+                    Gleich wirst du zum Absageformular weitergeleitet. Dort trägst du bitte deine E-Mail-Adresse ein und klickst auf „Jetzt Bescheid geben“. Erst dann ist deine Meldung bei mir angekommen.
                   </div>
                 )}
               </div>
