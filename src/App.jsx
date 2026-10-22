@@ -88,13 +88,27 @@ async function sget(key) {
     return await r.json();
   } catch { return null; }
 }
+const GESCHUETZT = ["bbb_gruppen_v2", "bbb_removed_v2", "bbb_notizen_v2"];
 async function sset(key, val) {
   try {
-    await fetch(`/.netlify/functions/blob-set`, {
+    const headers = { "Content-Type": "application/json" };
+    if (GESCHUETZT.includes(key)) {
+      let token = localStorage.getItem("bbb_admin_token");
+      if (!token) {
+        token = window.prompt("Admin-Schlüssel eingeben:") || "";
+        if (token) localStorage.setItem("bbb_admin_token", token);
+      }
+      headers["x-admin-token"] = token;
+    }
+    const r = await fetch(`/.netlify/functions/blob-set`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ key, value: val }),
     });
+    if (!r.ok) {
+      localStorage.removeItem("bbb_admin_token");
+      console.error("Speichern abgelehnt:", r.status);
+    }
   } catch {}
 }
 
@@ -601,7 +615,7 @@ export default function App() {
     const changeable = isChangeable(termin, uhrzeitFuer(gruppe, termin));
     const voteKey = `${gruppeId}_${termin}`;
     const curVotes = normalizeVotes(votes[voteKey]);
-    const total = curVotes.kommt.length + curVotes.online.length + curVotes.kinderwagen.length;
+    const total = curVotes.kommt.length + curVotes.kinderwagen.length;
     const myVote = myVotes[termin];
     const notiz = notizen[`${gruppeId}_${termin}`];
     const nameFehlt = !teilnehmerName.trim();
@@ -669,6 +683,9 @@ export default function App() {
                     Bitte trage deinen Namen ein, um dich anzumelden.
                   </div>
                 )}
+                <div style={{ fontSize: 12, color: "#8B6464", marginTop: 6, lineHeight: 1.5, fontStyle: "italic" }}>
+                  🌿Diese Seite ist öffentlich zugänglich. Wenn Du Deinen Namen nicht angeben möchtest, kannst Du gern z. B. „Komme1“ eintragen. Wer absagt, wird sowieso auf eine andere Seite weitergeleitet, dort weiß ich, wer Du bist.✨
+                </div>
               </div>
             )}
 

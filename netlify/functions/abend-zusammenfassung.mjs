@@ -65,7 +65,7 @@ function getTomorrowISO() {
 // ── E-Mail HTML ───────────────────────────────────────────────────────────
 function buildHtml(kurse) {
   const rows = kurse.map(({ gruppe, termin, votes, notiz }) => {
-    const total = (votes.kommt || 0) + (votes.online || 0) + (votes.kinderwagen || 0);
+    const total = (votes.kommt || 0) + (votes.kinderwagen || 0);
     return `
       <div style="background:#fdf8f5;border-radius:16px;padding:20px 24px;margin-bottom:16px;border:1px solid #e8d5c8;">
         <div style="font-size:18px;font-weight:700;color:#3D2B2B;margin-bottom:4px;">${gruppe.name}</div>
