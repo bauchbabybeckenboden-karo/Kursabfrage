@@ -713,7 +713,6 @@ export default function App() {
                 <div style={{ fontSize: 15, fontWeight: 600, color: "#3a6b3a" }}>
                   {options.find(o => o.key === myVote)?.emoji} Danke für deine Rückmeldung, {teilnehmerName.trim()}!
                 </div>
-                <div style={{ fontSize: 13, color: "#5a8a5a", marginTop: 3 }}>Die Karo freut sich 🌸</div>
                 {(myVote === "kommt_nicht" || myVote === "online") && (
                   <div style={{ fontSize: 13, color: "#4a6a9a", marginTop: 8, fontStyle: "italic" }}>
                     Gleich wirst du zum Absageformular weitergeleitet. Dort trägst du bitte deine E-Mail-Adresse ein und klickst auf „Jetzt Bescheid geben“. Erst dann ist deine Meldung bei mir angekommen.
