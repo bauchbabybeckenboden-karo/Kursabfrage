@@ -185,7 +185,7 @@ function isVisible(iso, uhrzeit) {
   return now < kursEnde;
 }
 
-// Abstimmung möglich bis 30 Min vor Kursbeginn
+// Abstimmung möglich bis 5 Min vor Kursbeginn
 function isChangeable(iso, uhrzeit) {
   if (!iso) return false;
   const now = new Date();
@@ -194,7 +194,7 @@ function isChangeable(iso, uhrzeit) {
   if (iso < todayISO) return false;
   const [h, m] = uhrzeit.split(":").map(Number);
   const kursTime = new Date(); kursTime.setHours(h, m, 0, 0);
-  return now < new Date(kursTime.getTime() - 30 * 60000);
+  return now < new Date(kursTime.getTime() - 5 * 60000);
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
@@ -664,7 +664,7 @@ export default function App() {
             )}
             {changeable && myVote && (
               <div style={{ ...S.cutoffNote, background: "rgba(90,158,110,0.07)" }}>
-                ✏️ Du kannst deine Antwort noch bis 30 Min vor Kurs ändern.
+                ✏️ Du kannst deine Antwort noch bis 5 Min vor Kurs ändern.
               </div>
             )}
 

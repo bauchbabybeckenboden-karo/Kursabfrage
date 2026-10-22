@@ -1,17 +1,17 @@
 // netlify/functions/abend-zusammenfassung.mjs
 //
 // Läuft täglich um 18:30 UTC (= 20:30 Uhr Sommerzeit / 19:30 Uhr Winterzeit).
-// Prüft ob morgen ein Kurs stattfindet – wenn ja, sendet eine
-// Zusammenfassung der aktuellen Anmeldungen per Resend.
+// Prüft ob morgen ein Kurs stattfindet. Wenn ja, schickt sie die aktuelle
+// Zusammenfassung an das Apps-Script-Web-App (Versand per Gmail, ohne Resend).
 //
 // Umgebungsvariablen (in Netlify UI setzen):
-//   RESEND_API_KEY   → dein Resend API-Key (re_xxxx...)
+//   APPS_SCRIPT_URL  → Web-App-URL aus Apps Script (endet auf /exec)
+//   ABEND_TOKEN      → derselbe Wert wie die Skript-Eigenschaft ABEND_TOKEN
 
 import { getStore } from "@netlify/blobs";
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const AN  = "kontakt@bauch-baby-beckenboden.com";
-const VON = "Kursapp <kontakt@bauch-baby-beckenboden.com>";
+const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL;
+const ABEND_TOKEN     = process.env.ABEND_TOKEN;
 
 // ── Hilfsfunktionen ───────────────────────────────────────────────────────
 function getEaster(year) {
@@ -27,15 +27,6 @@ function getEaster(year) {
 }
 function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
 function toISO(d) { return d.toISOString().split("T")[0]; }
-function hessianHolidays(year) {
-  const e = getEaster(year);
-  return new Set([
-    `${year}-01-01`, toISO(addDays(e, -2)), toISO(e), toISO(addDays(e, 1)),
-    `${year}-05-01`, toISO(addDays(e, 39)), toISO(addDays(e, 49)),
-    toISO(addDays(e, 50)), toISO(addDays(e, 60)),
-    `${year}-10-03`, `${year}-12-25`, `${year}-12-26`,
-  ]);
-}
 function formatDateDE(iso) {
   const d = new Date(iso + "T12:00:00");
   return d.toLocaleDateString("de-DE", { weekday: "long", day: "2-digit", month: "long" });
@@ -47,7 +38,8 @@ async function readBlob(key) {
     const store = getStore("bbb-shared");
     const val = await store.get(key);
     return val ? JSON.parse(val) : null;
-  } catch {
+  } catch (err) {
+    console.error(`Blob ${key} konnte nicht gelesen werden:`, err);
     return null;
   }
 }
@@ -62,7 +54,7 @@ function getTomorrowISO() {
   return toISO(berlin);
 }
 
-// ── E-Mail HTML ───────────────────────────────────────────────────────────
+// ── E-Mail HTML (nur Emojis aus der Basic Multilingual Plane) ─────────────
 function buildHtml(kurse) {
   const rows = kurse.map(({ gruppe, termin, votes, notiz }) => {
     const total = (votes.kommt || 0) + (votes.kinderwagen || 0);
@@ -70,22 +62,22 @@ function buildHtml(kurse) {
       <div style="background:#fdf8f5;border-radius:16px;padding:20px 24px;margin-bottom:16px;border:1px solid #e8d5c8;">
         <div style="font-size:18px;font-weight:700;color:#3D2B2B;margin-bottom:4px;">${gruppe.name}</div>
         <div style="font-size:14px;color:#8B6464;margin-bottom:${notiz ? "8px" : "16px"};">${formatDateDE(termin)} · ${gruppe.uhrzeit} Uhr</div>
-        ${notiz ? `<div style="font-size:13px;color:#8B6464;font-style:italic;background:rgba(196,137,110,0.1);border-radius:8px;padding:6px 12px;margin-bottom:14px;">📌 ${notiz}</div>` : ""}
+        ${notiz ? `<div style="font-size:13px;color:#8B6464;font-style:italic;background:rgba(196,137,110,0.1);border-radius:8px;padding:6px 12px;margin-bottom:14px;">Notiz: ${notiz}</div>` : ""}
         <table style="width:100%;border-collapse:collapse;">
           <tr>
             <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;font-size:15px;color:#3D2B2B;">✅ Kommen vor Ort</td>
             <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;text-align:right;font-size:20px;font-weight:700;color:#5a9e6e;">${votes.kommt || 0}</td>
           </tr>
           ${gruppe.baby ? `<tr>
-            <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;font-size:15px;color:#3D2B2B;">🛒 Mit Kinderwagen</td>
+            <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;font-size:15px;color:#3D2B2B;">Mit Kinderwagen</td>
             <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;text-align:right;font-size:20px;font-weight:700;color:#C4A0A0;">${votes.kinderwagen || 0}</td>
           </tr>` : ""}
           <tr>
-            <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;font-size:15px;color:#3D2B2B;">💻 Online dabei</td>
+            <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;font-size:15px;color:#3D2B2B;">Online dabei</td>
             <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;text-align:right;font-size:20px;font-weight:700;color:#5a7ec0;">${votes.online || 0}</td>
           </tr>
           <tr>
-            <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;font-size:15px;color:#3D2B2B;">😖 Kommen nicht</td>
+            <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;font-size:15px;color:#3D2B2B;">Kommen nicht</td>
             <td style="padding:8px 0;border-bottom:1px solid #F6EBE8;text-align:right;font-size:20px;font-weight:700;color:#c05040;">${votes.kommt_nicht || 0}</td>
           </tr>
           <tr>
@@ -100,7 +92,7 @@ function buildHtml(kurse) {
     <div style="font-family:'Georgia',serif;max-width:560px;margin:0 auto;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(120,70,50,0.08);">
       <div style="background:linear-gradient(135deg,#C4A0A0,#8B6464);padding:28px 32px;">
         <div style="font-size:13px;letter-spacing:0.15em;text-transform:uppercase;color:rgba(255,255,255,0.8);margin-bottom:6px;">Abend-Zusammenfassung</div>
-        <div style="font-size:26px;font-weight:700;color:#fff;">Kurse morgen früh 🌸</div>
+        <div style="font-size:26px;font-weight:700;color:#fff;">Kurse morgen früh ✨</div>
       </div>
       <div style="padding:28px 32px;">
         ${rows}
@@ -114,19 +106,26 @@ function buildHtml(kurse) {
 // ── Hauptfunktion ─────────────────────────────────────────────────────────
 const handler = async () => {
   try {
+    if (!APPS_SCRIPT_URL || !ABEND_TOKEN) {
+      console.error("FEHLER: APPS_SCRIPT_URL oder ABEND_TOKEN fehlt in den Netlify-Umgebungsvariablen.");
+      return;
+    }
+
     const tomorrow    = getTomorrowISO();
     const tomorrowDay = new Date(tomorrow + "T12:00:00").getDay();
+    console.log(`Prüfe Kurse für ${tomorrow} (Wochentag ${tomorrowDay})`);
 
     const gruppen     = await readBlob("bbb_gruppen_v2") || {};
     const votes       = await readBlob("bbb_votes_v2")   || {};
     const removedData = await readBlob("bbb_removed_v2") || {};
     const notizenData = await readBlob("bbb_notizen_v2") || {};
+    console.log(`Gruppen gefunden: ${Object.keys(gruppen).length}`);
 
     const kurse = [];
     for (const [id, gruppe] of Object.entries(gruppen)) {
       if (gruppe.wochentag !== tomorrowDay) continue;
       const removed   = removedData[id] || [];
-      const hatTermin = gruppe.dates.includes(tomorrow) && !removed.includes(tomorrow);
+      const hatTermin = (gruppe.dates || []).includes(tomorrow) && !removed.includes(tomorrow);
       if (!hatTermin) continue;
       const voteKey = `${id}_${tomorrow}`;
       const v = votes[voteKey] || { kommt: 0, kommt_nicht: 0, online: 0, kinderwagen: 0 };
@@ -135,31 +134,29 @@ const handler = async () => {
     }
 
     if (kurse.length === 0) {
-      console.log("Kein Kurs morgen – kein E-Mail gesendet.");
+      console.log(`Kein Kurs am ${tomorrow} – keine Mail gesendet.`);
       return;
     }
 
-    const res = await fetch("https://api.resend.com/emails", {
+    const subject = `✨ Morgen: ${kurse.map(k => k.gruppe.name).join(" & ")} – ${formatDateDE(tomorrow)}`;
+
+    const res = await fetch(APPS_SCRIPT_URL, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: VON,
-        to:   [AN],
-        subject: `🌸 Morgen: ${kurse.map(k => k.gruppe.name).join(" & ")} – ${formatDateDE(tomorrow)}`,
-        html: buildHtml(kurse),
-      }),
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ token: ABEND_TOKEN, subject, html: buildHtml(kurse) }),
+      redirect: "follow",
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      console.error("Resend Fehler:", err);
+    const text = await res.text();
+    let antwort = null;
+    try { antwort = JSON.parse(text); } catch { /* keine JSON-Antwort */ }
+
+    if (!res.ok || !antwort || antwort.ok !== true) {
+      console.error("Apps-Script-Fehler:", res.status, text.slice(0, 500));
       return;
     }
 
-    console.log(`E-Mail gesendet für ${kurse.length} Kurs(e) am ${tomorrow}`);
+    console.log(`Mail gesendet für ${kurse.length} Kurs(e) am ${tomorrow}`);
 
   } catch (err) {
     console.error("Fehler:", err);
